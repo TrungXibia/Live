@@ -30,8 +30,7 @@ XSMB_STRUCTURE = [
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
 ]
 
-# ĐỊNH NGHĨA 15 BỘ ĐỀ CƠ BẢN
-# Key là tên bộ (đại diện), Value là danh sách các số thuộc bộ đó
+# ĐỊNH NGHĨA 15 BỘ ĐỀ CƠ BẢN (Toàn bộ là string)
 BO_DE_DICT = {
     "00": ["00", "55", "05", "50"],
     "11": ["11", "66", "16", "61"],
@@ -43,15 +42,14 @@ BO_DE_DICT = {
     "03": ["03", "30", "08", "80", "53", "35", "58", "85"],
     "04": ["04", "40", "09", "90", "54", "45", "59", "95"],
     "12": ["12", "21", "17", "71", "62", "26", "67", "76"],
-    "13": ["13", "31", "18", 81, "63", "36", "68", "86"],
+    "13": ["13", "31", "18", "81", "63", "36", "68", "86"],
     "14": ["14", "41", "19", "91", "64", "46", "69", "96"],
     "23": ["23", "32", "28", "82", "73", "37", "78", "87"],
     "24": ["24", "42", "29", "92", "74", "47", "79", "97"],
     "34": ["34", "43", "39", "93", "84", "48", "89", "98"]
 }
 
-# Tạo bảng tra cứu ngược (Số -> Tên bộ) để chạy nhanh hơn
-# Ví dụ: "00": "00", "55": "00", "01": "01", "60": "01"...
+# Tạo bảng tra cứu ngược (Số -> Tên bộ)
 NUMBER_TO_SET_MAP = {}
 for set_name, numbers in BO_DE_DICT.items():
     for num in numbers:
@@ -97,23 +95,25 @@ def create_position_map():
 
 def get_set_name(number_str):
     """Lấy tên bộ đề của một số (Ví dụ: '60' -> '01')"""
-    return NUMBER_TO_SET_MAP.get(number_str, "Unknown")
+    return NUMBER_TO_SET_MAP.get(str(number_str), "Unknown")
 
 def process_days_data(raw_list, num_days):
     """
     Xử lý dữ liệu thô của N ngày.
-    Trả về danh sách các object đã parse sẵn (Body, Target, Set ID...).
     """
     processed_days = []
     pos_map = create_position_map()
 
     # Duyệt qua N ngày (raw_list[0] là mới nhất)
-    for i in range(min(num_days, len(raw_list))):
+    limit = min(num_days, len(raw_list))
+    for i in range(limit):
         record = raw_list[i]
+        
+        # SỬA LỖI TẠI ĐÂY: Dùng biến full_str thống nhất
         full_str = parse_detail_to_107_chars(record.get('detail', ''))
         
-        if len(full_107_str) != 107:
-            continue # Bỏ qua ngày lỗi
+        if len(full_str) != 107:
+            continue 
             
         target = full_str[3:5] # GĐB 4-5
         body = full_str[5:]
@@ -134,20 +134,12 @@ def process_days_data(raw_list, num_days):
 
 def find_streak_bridges(days_data, mode="straight"):
     """
-    Tìm các cặp vị trí chạy thông qua tất cả các ngày trong days_data.
-    
-    Args:
-        days_data: List ngày đã xử lý (0 là mới nhất, 1 là hôm qua...).
-        mode: "straight" (thẳng) hoặc "set" (bộ đề).
-    
-    Returns:
-        List các cặp (i, j) thỏa mãn tất cả các ngày.
+    Tìm các cặp vị trí chạy thông qua tất cả các ngày.
     """
     if not days_data:
         return []
 
     # Bước 1: Tìm tất cả các cặp đúng của NGÀY MỚI NHẤT (Day 0)
-    # Đây là tập ứng viên ban đầu.
     candidate_pairs = []
     day0 = days_data[0]
     body = day0['body']
@@ -167,14 +159,12 @@ def find_streak_bridges(days_data, mode="straight"):
             if is_match:
                 candidate_pairs.append((i, j))
 
-    # Bước 2: Duyệt ngược về các ngày quá khứ (Day 1 -> Day N)
-    # Loại bỏ dần các cặp không đúng.
+    # Bước 2: Duyệt ngược về các ngày quá khứ để lọc
     final_pairs = []
     
     for (i, j) in candidate_pairs:
         streak_ok = True
         
-        # Kiểm tra cặp này ở các ngày cũ hơn
         for k in range(1, len(days_data)):
             day_k = days_data[k]
             body_k = day_k['body']
@@ -185,7 +175,6 @@ def find_streak_bridges(days_data, mode="straight"):
                     streak_ok = False
                     break
             else: # mode == "set"
-                # So sánh tên bộ
                 if get_set_name(pair_val_k) != day_k['target_set']:
                     streak_ok = False
                     break
@@ -201,6 +190,7 @@ def find_streak_bridges(days_data, mode="straight"):
 
 def main():
     st.title("🔥 Super Soi Cầu XSMB: Chạy Thông & Bộ Đề")
+    st.markdown("Dữ liệu từ: **kqxs88.live**")
     
     # --- SIDEBAR CẤU HÌNH ---
     with st.sidebar:
@@ -215,8 +205,8 @@ def main():
         
         st.info("""
         **Giải thích:**
-        - **Soi Thẳng:** Cặp số cộng lại phải bằng y hệt 2 số cuối GĐB. (Khó, ít cầu nhưng chất).
-        - **Soi Bộ Đề:** Cặp số cộng lại thuộc cùng "Bộ" với GĐB. (Dễ, nhiều cầu, chạy dài hơn).
+        - **Soi Thẳng:** Tổng 2 vị trí = Chính xác 2 số cuối GĐB.
+        - **Soi Bộ Đề:** Tổng 2 vị trí thuộc cùng BỘ với GĐB. (Rộng hơn, dễ tìm cầu dài ngày).
         """)
         
         if st.button("🚀 QUÉT CẦU NGAY", type="primary"):
@@ -228,11 +218,10 @@ def main():
     raw_list = fetch_lottery_data()
     
     if not raw_list:
-        st.error("Không kết nối được API. Vui lòng thử lại sau.")
+        st.error("Không kết nối được API hoặc dữ liệu trả về lỗi.")
         return
 
     # Xử lý dữ liệu đầu vào
-    # Lấy scan_days + 1 để hiển thị, nhưng chỉ soi scan_days
     processed_days, pos_map = process_days_data(raw_list, scan_days)
     
     if len(processed_days) < scan_days:
@@ -240,18 +229,22 @@ def main():
         return
 
     # Hiển thị thông tin các ngày được soi
-    st.subheader(f"📅 Dữ liệu {scan_days} ngày gần nhất")
+    st.subheader(f"📅 Dữ liệu {scan_days} ngày gần nhất được dùng để soi")
     cols = st.columns(scan_days)
     for idx, day in enumerate(processed_days):
         with cols[idx]:
             st.markdown(f"**{day['issue']}**")
             st.code(f"GĐB: ...{day['target']}", language="text")
             if mode_key == "set":
-                st.caption(f"Thuộc Bộ: {day['target_set']}")
+                set_name = day['target_set']
+                if set_name != "Unknown":
+                    st.caption(f"Thuộc Bộ: {set_name}")
+                else:
+                    st.caption("Không thuộc bộ nào")
 
     # Chỉ chạy khi bấm nút
     if st.session_state.get('run_scan'):
-        with st.spinner(f"Đang quét tất cả các cặp vị trí trong {scan_days} ngày..."):
+        with st.spinner(f"Đang quét hàng ngàn cặp vị trí..."):
             
             # GỌI HÀM TÌM CẦU
             winning_pairs = find_streak_bridges(processed_days, mode=mode_key)
@@ -264,8 +257,8 @@ def main():
                 results_data = []
                 for (i, j) in winning_pairs:
                     row = {
-                        "Vị trí 1": f"{pos_map[i]} (Idx {i})",
-                        "Vị trí 2": f"{pos_map[j]} (Idx {j})",
+                        "Vị trí 1": f"{pos_map[i]}",
+                        "Vị trí 2": f"{pos_map[j]}",
                     }
                     
                     # Thêm cột giá trị cho từng ngày
@@ -273,7 +266,7 @@ def main():
                         val = day['body'][i] + day['body'][j]
                         if mode_key == "set":
                             # Nếu soi bộ, hiển thị: "85 (Bộ 03)"
-                            val_display = f"{val} (Bộ {get_set_name(val)})"
+                            val_display = f"{val} ({get_set_name(val)})"
                         else:
                             val_display = val
                             
@@ -281,19 +274,19 @@ def main():
                         
                     results_data.append(row)
                 
+                # Hiển thị bảng
                 st.dataframe(pd.DataFrame(results_data), use_container_width=True)
                 
-                # Hiển thị danh sách gợi ý cho ngày mai (nếu cần)
-                st.success("✅ Các cầu trên đều đã trả kết quả đúng cho các ngày hiển thị. Bạn có thể dùng các vị trí này để dự đoán cho ngày tiếp theo.")
+                st.success("✅ Các vị trí trên đều cho kết quả đúng (hoặc cùng bộ) liên tiếp các ngày qua.")
             else:
-                st.warning(f"Không tìm thấy cầu nào chạy thông {scan_days} ngày với chế độ {scan_mode}. Hãy thử giảm số ngày hoặc chuyển sang 'Soi Bộ Đề'.")
+                st.warning(f"Không tìm thấy cầu nào thỏa mãn điều kiện chạy thông {scan_days} ngày. Hãy thử giảm số ngày hoặc chuyển sang chế độ 'Soi Bộ Đề'.")
 
     # --- PHẦN TRA CỨU BỘ ĐỀ (PHỤ TRỢ) ---
     with st.expander("📖 Tra cứu nhanh các Bộ Đề"):
         col_a, col_b, col_c = st.columns(3)
         sets = list(BO_DE_DICT.items())
-        # Chia 3 cột
-        chunk_size = len(sets) // 3 + 1
+        chunk_size = (len(sets) // 3) + 1
+        
         for i, col in enumerate([col_a, col_b, col_c]):
             sub_sets = sets[i*chunk_size : (i+1)*chunk_size]
             with col:
