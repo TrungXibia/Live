@@ -7,7 +7,7 @@ import json
 # CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Soi Cầu Pro: Vị Trí & Giải",
+    page_title="Super Soi Cầu: Vị Trí & Giải",
     page_icon="💎",
     layout="wide"
 )
@@ -105,6 +105,7 @@ def process_days_data(raw_list):
         processed_days.append({
             "index": i,
             "issue": record.get('turnNum'),
+            "tam_cang": target_3cang[0],
             "de": de,
             "de_rev": de[::-1],
             "de_set": get_set_name(de),
@@ -197,6 +198,19 @@ def find_prize_bridges(days_data, mode="straight", min_streak=3):
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
+# === C. SOI TÂM CÀNG ===
+def find_tam_cang(days_data, min_streak=3):
+    valid = []
+    for k in range(len(days_data[0]['body'])):
+        streak = 0
+        for day in days_data:
+            if day['body'][k] == day['tam_cang']: streak += 1
+            else: break
+        if streak >= min_streak:
+            valid.append({"idx": k, "streak": streak})
+    valid.sort(key=lambda x: x['streak'], reverse=True)
+    return valid
+
 # -----------------------------------------------------------------------------
 # 4. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
@@ -211,7 +225,8 @@ def main():
         with c1:
             method = st.selectbox("🎯 PHƯƠNG PHÁP", [
                 "1. Cầu Vị Trí (Ghép 2 index)", 
-                "2. Cầu Giải (Nhị Hợp G1-G7)"
+                "2. Cầu Giải (Nhị Hợp G1-G7)",
+                "3. Cầu 3 Càng (Càng + Đề)"
             ])
             
         with c2:
@@ -223,7 +238,7 @@ def main():
             
         with c4:
             allow_rev = True
-            if not is_set and "Vị Trí" in method:
+            if not is_set and ("Vị Trí" in method or "3 Càng" in method):
                 allow_rev = st.checkbox("Đảo (AB-BA)", value=True)
             else:
                 st.write("")
@@ -302,6 +317,43 @@ def main():
                 st.dataframe(pd.DataFrame(data_show), use_container_width=True)
             else:
                 st.warning(f"Không có giải nào (G1-G7) chứa đề thông {min_strk} ngày.")
+
+        # --- METHOD 3: CẦU 3 CÀNG ---
+        elif "3 Càng" in method:
+            st.subheader("🎯 KẾT QUẢ SOI 3 CÀNG (TÂM CÀNG + ĐỀ)")
+            
+            c1, c2 = st.columns(2)
+            
+            # A. Tìm Càng
+            tc_res = find_tam_cang(days, min_streak=min_strk)
+            with c1:
+                st.info(f"🅰️ Cầu Tâm Càng ({len(tc_res)})")
+                if tc_res:
+                    tc_show = [{"Vị trí": pos_map[r['idx']], "Thông": f"{r['streak']} ngày", "Báo": days[0]['body'][r['idx']]} for r in tc_res]
+                    st.dataframe(pd.DataFrame(tc_show), use_container_width=True)
+                else: st.warning("Không có cầu càng.")
+
+            # B. Tìm Đề (Vị trí)
+            de_res = find_position_bridges(days, mode=mode, allow_rev=allow_rev, min_streak=min_strk)
+            with c2:
+                st.success(f"🅱️ Cầu Đề ({len(de_res)})")
+                if de_res:
+                    de_show = []
+                    for r in de_res[:20]:
+                        val = days[0]['body'][r['idx1']] + days[0]['body'][r['idx2']]
+                        de_show.append({"Vị trí 1": pos_map[r['idx1']], "Vị trí 2": pos_map[r['idx2']], "Báo": val})
+                    st.dataframe(pd.DataFrame(de_show), use_container_width=True)
+                else: st.warning("Không có cầu đề.")
+            
+            # C. Ghép
+            if tc_res and de_res:
+                st.divider()
+                st.markdown("### 💎 Gợi ý ghép 3 Càng hôm nay")
+                top_cang = tc_res[0]
+                top_de = de_res[0]
+                val_cang = days[0]['body'][top_cang['idx']]
+                val_de = days[0]['body'][top_de['idx1']] + days[0]['body'][top_de['idx2']]
+                st.metric("Bạch Thủ 3 Càng (Top 1)", f"{val_cang}{val_de}")
 
 if __name__ == "__main__":
     main()
