@@ -3,75 +3,94 @@ import numpy as np
 from PIL import Image
 import cv2
 
-# Khởi tạo Reader 1 lần để dùng chung (cache vào Ram)
-# Chỉ đọc số (allowlist) để tăng tốc và độ chính xác
+# Khởi tạo OCR (Chỉ chạy 1 lần)
 reader = easyocr.Reader(['en'], gpu=False) 
 
 def extract_numbers_from_image(image_file):
     """
-    Đọc ảnh, trả về chuỗi 107 ký tự chuẩn XSMB.
-    Input: File ảnh upload từ Streamlit.
-    Output: (full_str_107, list_of_numbers_found)
+    Xử lý ảnh chụp màn hình xổ số.
+    Trả về danh sách các con số tìm thấy có khả năng là giải.
     """
     try:
-        # 1. Chuyển ảnh upload thành format OpenCV
+        # 1. Load ảnh
         image = Image.open(image_file)
-        image_np = np.array(image)
+        img = np.array(image)
         
-        # 2. Xử lý ảnh (Grayscale) để OCR tốt hơn
-        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+        # 2. Tiền xử lý ảnh (Tăng tương phản để đọc số đỏ/đen rõ hơn)
+        # Chuyển xám
+        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        # Ngưỡng hóa (Threshold) để làm nổi bật chữ đen trên nền trắng
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         
-        # 3. Đọc text (Chỉ chấp nhận số)
-        # allowlist='0123456789' giúp loại bỏ chữ cái rác
-        results = reader.readtext(gray, allowlist='0123456789', detail=0)
+        # 3. OCR (Chỉ đọc số)
+        # detail=0 chỉ lấy text, paragraph=False để đọc từng cụm số riêng lẻ
+        results = reader.readtext(gray, allowlist='0123456789', detail=0, paragraph=False)
         
-        # 4. Lọc rác: Chỉ lấy các số có độ dài hợp lệ (2 đến 5 chữ số)
-        # XSMB có các giải: 5 số, 4 số, 3 số, 2 số.
-        clean_nums = []
+        candidates = []
+        
+        # 4. Lọc rác thông minh
         for text in results:
-            text = text.strip()
-            # Loại bỏ các số quá ngắn (ví dụ số thứ tự 1, 2, 3...) hoặc quá dài
-            if text.isdigit() and 2 <= len(text) <= 5:
-                clean_nums.append(text)
-        
-        # 5. Sắp xếp và ghép vào cấu trúc XSMB
-        # Tổng cộng XSMB có 27 giải.
-        # Thứ tự đọc của EasyOCR thường là từ Trái qua Phải, Trên xuống Dưới.
-        # Bảng KQXS thường xếp: GĐB -> G1 -> G2 ... -> G7
-        
-        # Nếu đọc thiếu hoặc thừa, ta trả về list để user sửa tay
-        return clean_nums
+            # Xóa khoảng trắng thừa
+            clean_text = text.replace(" ", "").strip()
+            
+            # Chỉ lấy số
+            if not clean_text.isdigit():
+                continue
+                
+            length = len(clean_text)
+            
+            # QUY TẮC XSMB:
+            # Giải ĐB, 1, 2, 3: 5 chữ số
+            # Giải 4, 5: 4 chữ số
+            # Giải 6: 3 chữ số
+            # Giải 7: 2 chữ số
+            # -> Chỉ chấp nhận số có độ dài 2, 3, 4, 5
+            
+            # Loại bỏ số năm (2025) nếu nó xuất hiện ở đầu/cuối (thường OCR đọc theo thứ tự)
+            # Tuy nhiên khó phân biệt 2025 với giải 4. Nên cứ lấy hết, user sửa sau.
+            
+            if length in [2, 3, 4, 5]:
+                candidates.append(clean_text)
+                
+        return candidates
 
     except Exception as e:
         return [f"Error: {str(e)}"]
 
 def map_numbers_to_107_str(numbers_list):
     """
-    Ghép danh sách số thô thành chuỗi 107 ký tự.
-    Cần đúng 27 số theo thứ tự: 1 ĐB, 1 G1, 2 G2, 6 G3, 4 G4, 6 G5, 3 G6, 4 G7
+    Cố gắng nhét danh sách số vào đúng 27 giải của XSMB.
+    Tổng cộng 27 số. 
+    Thứ tự ưu tiên: Lấy 27 số ĐẦU TIÊN tìm thấy (vì ảnh thường chụp từ trên xuống).
     """
-    # Cấu trúc số lượng giải
-    structure = [1, 1, 2, 6, 4, 6, 3, 4] # Tổng 27 giải
-    lengths   = [5, 5, 5, 5, 4, 4, 3, 2] # Độ dài từng giải
+    # Cấu trúc số lượng giải XSMB
+    # GĐB(1), G1(1), G2(2), G3(6), G4(4), G5(6), G6(3), G7(4) -> Tổng 27
+    PRIZE_COUNTS = [1, 1, 2, 6, 4, 6, 3, 4]
+    PRIZE_LENGTHS = [5, 5, 5, 5, 4, 4, 3, 2]
     
     full_str = ""
     current_idx = 0
     
-    # Nếu không đủ 27 số, điền ? vào chỗ thiếu
-    # Nếu thừa, cắt bớt
+    # Nếu danh sách đưa vào > 27 số (do dính ngày tháng, mã đb...), ta ưu tiên lấy những số đúng định dạng giải
+    # Nhưng đơn giản nhất là lấy 27 số đầu tiên hợp lệ.
     
-    for count, length in zip(structure, lengths):
+    for count, length in zip(PRIZE_COUNTS, PRIZE_LENGTHS):
         for _ in range(count):
             if current_idx < len(numbers_list):
                 val = numbers_list[current_idx]
-                # Kiểm tra độ dài, nếu sai thì fill ? (hoặc giữ nguyên nếu user chấp nhận rủi ro)
+                
+                # Kiểm tra độ dài có khớp giải không? 
+                # (Ví dụ GĐB bắt buộc 5 số, G7 bắt buộc 2 số)
+                # Nếu khớp -> Ghép. Nếu không khớp -> Vẫn ghép nhưng cảnh báo (hoặc user tự sửa)
+                # Ở đây ta ghép luôn, thừa thiếu tính sau.
+                
                 if len(val) == length:
                     full_str += val
+                elif len(val) > length: 
+                    full_str += val[-length:] # Cắt đuôi
                 else:
-                    # Cố gắng fix: nếu dài hơn thì cắt, ngắn hơn thì pad ?
-                    # Nhưng an toàn nhất là ghép vào, thuật toán soi cầu sẽ tự xử lý
-                    if len(val) > length: full_str += val[-length:] # Lấy đuôi
-                    else: full_str += val.rjust(length, '?') 
+                    full_str += val.rjust(length, '?') # Điền ?
+                    
             else:
                 full_str += "?" * length
             current_idx += 1
