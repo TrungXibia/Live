@@ -2,13 +2,12 @@ import streamlit as st
 import requests
 import pandas as pd
 import json
-import time
-from bs4 import BeautifulSoup
+import scraper  # <--- IMPORT FILE VỪA TẠO
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH & CSS
+# CẤU HÌNH
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Chiến Trường XSMB: Auto & Live", page_icon="⚔️", layout="wide")
+st.set_page_config(page_title="Soi Cầu Pro: Live Minh Ngọc", page_icon="⚔️", layout="wide")
 
 st.markdown("""
 <style>
@@ -16,25 +15,13 @@ st.markdown("""
     div.stButton > button {width: 100%; height: 3em; font-weight: bold;}
     thead tr th:first-child {display:none}
     tbody th {display:none}
-    
-    /* Style cho Live Box */
-    .hot-box {
-        background-color: #ffebee; border: 2px solid #ef5350; 
-        border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
-    }
-    .hot-title {font-size: 11px; color: #c62828; font-weight: bold;}
-    .hot-val {font-size: 26px; color: #d32f2f; font-weight: 900;}
-    .live-progress {font-weight: bold; color: #2e7d32;}
+    .hot-box {background-color:#ffebee; border:2px solid #ef5350; border-radius:8px; padding:10px; text-align:center; margin-bottom:10px;}
+    .hot-val {font-size:26px; color:#d32f2f; font-weight:900;}
+    .live-progress {font-weight:bold; color:#2e7d32;}
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------------------------------------------------------
-# 2. DATA & CONSTANTS
-# -----------------------------------------------------------------------------
-# API Lịch sử (Quét cầu)
 API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=50&gameCode=miba"
-# Link Live (Ốp cầu)
-LIVE_URL = "https://www.minhngoc.net.vn/xo-so-truc-tiep/mien-bac.html"
 
 XSMB_STRUCTURE = [
     ("GĐB", 1, 5), ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
@@ -52,7 +39,7 @@ BO_DE_DICT = {
 NUMBER_TO_SET_MAP = {str(n): s for s, nums in BO_DE_DICT.items() for n in nums}
 
 # -----------------------------------------------------------------------------
-# 3. HÀM XỬ LÝ DỮ LIỆU LỊCH SỬ
+# HÀM XỬ LÝ (LOGIC CŨ)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_history_data():
@@ -74,17 +61,11 @@ def process_data(raw):
     for i, rec in enumerate(raw):
         full = parse_detail(rec.get('detail', ''))
         if len(full) != 107: continue
-        
         target_3c = full[2:5]
         de = target_3c[1:]
-        
         processed.append({
             "issue": rec.get('turnNum'),
-            "de": de,
-            "de_rev": de[::-1],
-            "de_set": get_set(de),
-            "tam_cang": target_3c[0],
-            "body": full
+            "de": de, "de_rev": de[::-1], "de_set": get_set(de), "tam_cang": target_3c[0], "body": full
         })
     return processed
 
@@ -108,18 +89,11 @@ def get_prize_map_no_gdb():
     return m
 
 # -----------------------------------------------------------------------------
-# 4. THUẬT TOÁN TỰ ĐỘNG (AUTO SCAN)
+# ALGORITHMS
 # -----------------------------------------------------------------------------
-
-# --- A. SOI VỊ TRÍ ---
 def auto_scan_positions(data, mode, allow_rev):
     if not data: return []
-    day0 = data[0]
-    body = day0['body']
-    
-    # Bắt đầu từ index 5 (BỎ GĐB)
-    candidates = []
-    start_idx = 5 
+    day0 = data[0]; body = day0['body']; candidates = []; start_idx = 5 
     for i in range(start_idx, len(body)):
         for j in range(start_idx, len(body)):
             if i == j: continue
@@ -145,18 +119,13 @@ def auto_scan_positions(data, mode, allow_rev):
                 if get_set(val) == day['de_set']: match = True
             if match: streak += 1
             else: break 
-        
-        if streak >= 2: # Min streak 2
-            results.append({"i": i, "j": j, "streak": streak})
-            
+        if streak >= 2: results.append({"i": i, "j": j, "streak": streak})
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-# --- B. SOI GIẢI ---
 def check_prize(p_str, de, mode):
     digits = set(p_str)
-    if mode == "straight":
-        return (de[0] in digits) and (de[1] in digits)
+    if mode == "straight": return (de[0] in digits) and (de[1] in digits)
     else:
         nums = BO_DE_DICT.get(get_set(de), [])
         for n in nums:
@@ -169,16 +138,12 @@ def auto_scan_prizes(data, mode):
     for p_name, (s, e) in prize_map.items():
         streak = 0
         for day in data:
-            p_str = day['body'][s:e]
-            if check_prize(p_str, day['de'], mode): streak += 1
+            if check_prize(day['body'][s:e], day['de'], mode): streak += 1
             else: break
-        if streak >= 2:
-            results.append({"prize": p_name, "streak": streak, "val": data[0]['body'][s:e]})
-            
+        if streak >= 2: results.append({"prize": p_name, "streak": streak, "val": data[0]['body'][s:e]})
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-# --- C. SOI TÂM CÀNG ---
 def auto_scan_tam_cang(data):
     res = []
     for k in range(5, len(data[0]['body'])):
@@ -186,224 +151,119 @@ def auto_scan_tam_cang(data):
         for day in data:
             if day['body'][k] == day['tam_cang']: streak += 1
             else: break
-        if streak >= 2:
-            res.append({"idx": k, "streak": streak})
+        if streak >= 2: res.append({"idx": k, "streak": streak})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
 # -----------------------------------------------------------------------------
-# 5. MODULE LIVE MINH NGỌC (REAL-TIME)
-# -----------------------------------------------------------------------------
-def fetch_live_minhngoc():
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        resp = requests.get(f"{LIVE_URL}?t={int(time.time())}", headers=headers, timeout=5)
-        soup = BeautifulSoup(resp.content, 'html.parser')
-        
-        box = soup.find('div', class_='box_kqxs')
-        if not box: return None, 0
-
-        prizes_data = {}
-        mapping_class = {
-            "GĐB": "giaiDb", "G1": "giai1", "G2": "giai2", "G3": "giai3",
-            "G4": "giai4", "G5": "giai5", "G6": "giai6", "G7": "giai7"
-        }
-        
-        for my_name, mn_class in mapping_class.items():
-            cell = box.find('td', class_=mn_class)
-            nums = []
-            if cell:
-                divs = cell.find_all('div')
-                if divs: nums = [d.text.strip() for d in divs]
-                else: nums = [cell.text.strip()]
-            
-            clean_nums = [n for n in nums if n.isdigit()]
-            prizes_data[my_name] = clean_nums
-
-        full_str = ""
-        for p_name, count, length in XSMB_STRUCTURE:
-            current_nums = prizes_data.get(p_name, [])
-            for i in range(count):
-                if i < len(current_nums):
-                    val = current_nums[i]
-                    if len(val) == length: full_str += val
-                    else: full_str += val.ljust(length, '?')
-                else:
-                    full_str += "?" * length
-        
-        filled = 107 - full_str.count('?')
-        return full_str, filled
-    except: return None, 0
-
-# -----------------------------------------------------------------------------
-# 6. GIAO DIỆN CHÍNH
+# MAIN
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🔥 Chiến Trường XSMB: Auto Scan + Live Ốp Cầu")
-    
-    # Session để lưu cầu tìm được
+    st.title("🔥 Chiến Trường XSMB (Scraper Tách Biệt)")
+
     if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
     if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
     if 'saved_cang' not in st.session_state: st.session_state['saved_cang'] = []
     if 'pos_map' not in st.session_state: st.session_state['pos_map'] = get_pos_map()
 
-    # --- PHẦN 1: MENU ---
     c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
-    with c1:
-        method = st.selectbox("🎯 Phương Pháp", ["1. Cầu Vị Trí (Cặp Số)", "2. Cầu Giải (Nhị Hợp)", "3. Cầu 3 Càng"])
-    with c2:
-        is_set = st.checkbox("Soi Bộ Đề", False)
-        mode = "set" if is_set else "straight"
-    with c3:
-        allow_rev = True
-        if not is_set and ("Vị Trí" in method or "3 Càng" in method):
-            allow_rev = st.checkbox("Đảo AB", True)
-    with c4:
-        st.write("")
-        btn = st.button("QUÉT TỰ ĐỘNG", type="primary")
+    with c1: method = st.selectbox("Phương Pháp", ["1. Cầu Vị Trí", "2. Cầu Giải", "3. Cầu 3 Càng"])
+    with c2: is_set = st.checkbox("Soi Bộ", False); mode = "set" if is_set else "straight"
+    with c3: allow_rev = st.checkbox("Đảo AB", True) if not is_set and "Vị Trí" in method or "3 Càng" in method else True
+    with c4: st.write(""); btn = st.button("QUÉT AUTO", type="primary")
 
     st.divider()
-    
     raw = fetch_history_data()
-    if not raw: st.error("Lỗi API Lịch sử."); return
+    if not raw: st.error("Lỗi API"); return
     data = process_data(raw)
     pos_map = get_pos_map()
-    
-    st.subheader("📅 Lịch sử 5 ngày gần nhất")
-    if len(data) >= 5:
-        h = [{"Ngày": d['issue'], "Đề": d['de'], "Bộ": d['de_set']} for d in data[:5]]
-        st.dataframe(pd.DataFrame(h).T, use_container_width=True)
 
-    # --- PHẦN 2: KẾT QUẢ QUÉT (AUTO SCAN) ---
+    st.subheader("📅 Lịch sử 5 ngày")
+    if len(data)>=5: st.dataframe(pd.DataFrame([{"Ngày": d['issue'], "Đề": d['de'], "Bộ": d['de_set']} for d in data[:5]]).T, use_container_width=True)
+
     if btn:
-        # Reset saved
         st.session_state['saved_bridges'] = []
         st.session_state['saved_prizes'] = []
         st.session_state['saved_cang'] = []
-
         st.write("---")
-        st.markdown("### 🏆 BẢNG XẾP HẠNG CẦU (Dữ liệu Lịch sử)")
         
-        # 1. VỊ TRÍ
         if "Vị Trí" in method:
-            with st.spinner("Đang quét vị trí..."):
-                res = auto_scan_positions(data, mode, allow_rev)
-            
+            with st.spinner("Scanning..."): res = auto_scan_positions(data, mode, allow_rev)
             if res:
-                # Lưu Top 30 cầu vào Session để dùng cho Live
                 st.session_state['saved_bridges'] = res[:30]
-                
-                rows = []
-                for r in res[:50]:
-                    val = data[0]['body'][r['i']] + data[0]['body'][r['j']]
-                    rows.append({
-                        "Hạng": f"#{len(rows)+1}",
-                        "Vị trí 1": pos_map[r['i']],
-                        "Vị trí 2": pos_map[r['j']],
-                        "Thông": f"{r['streak']} ngày 🔥",
-                        "Báo số": val
-                    })
+                rows = [{"Hạng":f"#{i+1}", "V1": pos_map[r['i']], "V2": pos_map[r['j']], "Thông": f"{r['streak']}n", "Báo": data[0]['body'][r['i']]+data[0]['body'][r['j']]} for i,r in enumerate(res[:50])]
                 st.dataframe(pd.DataFrame(rows), use_container_width=True)
-                st.success(f"Đã lưu Top 30 cầu vị trí. Kéo xuống dưới để xem Live!")
-            else:
-                st.warning("Không tìm thấy cầu vị trí nào.")
-
-        # 2. NHỊ HỢP
+            else: st.warning("Không tìm thấy cầu.")
+            
         elif "Cầu Giải" in method:
             res = auto_scan_prizes(data, mode)
-            st.session_state['saved_prizes'] = res # Lưu hết
+            st.session_state['saved_prizes'] = res
             if res:
-                rows = [{"Hạng": f"#{i+1}", "Giải": r['prize'], "Thông": f"{r['streak']} ngày 🔥", "Dữ liệu": r['val']} for i, r in enumerate(res)]
+                rows = [{"Giải": r['prize'], "Thông": f"{r['streak']}n", "Dữ liệu": r['val']} for r in res]
                 st.dataframe(pd.DataFrame(rows), use_container_width=True)
-                st.success("Đã lưu danh sách cầu giải.")
+            else: st.warning("Không tìm thấy cầu.")
 
-        # 3. 3 CÀNG
         elif "3 Càng" in method:
-            c_col, d_col = st.columns(2)
             tc = auto_scan_tam_cang(data)
             de = auto_scan_positions(data, mode, allow_rev)
-            
             st.session_state['saved_cang'] = tc[:10]
-            st.session_state['saved_bridges'] = de[:20] # Lưu đề để ghép
+            st.session_state['saved_bridges'] = de[:20]
+            st.success("Đã lưu cầu Càng & Đề.")
 
-            with c_col:
-                st.info(f"Tâm Càng")
-                if tc: st.dataframe(pd.DataFrame([{"Vị trí": pos_map[r['idx']], "Thông": f"{r['streak']} ngày"} for r in tc]), use_container_width=True)
-            with d_col:
-                st.success(f"Cầu Đề")
-                if de:
-                    rows = [{"V1": pos_map[r['i']], "V2": pos_map[r['j']], "Thông": f"{r['streak']} ngày"} for r in de[:20]]
-                    st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-    # --- PHẦN 3: LIVE MINH NGỌC (ỐP CẦU) ---
     st.write("---")
-    st.header("🔴 LIVE MONITOR: ỐP CẦU TRỰC TIẾP (Minh Ngọc)")
+    st.header("🔴 LIVE MONITOR (Minh Ngọc)")
     
-    # Nút cập nhật Live
-    col_live_btn, col_live_status = st.columns([1, 3])
-    with col_live_btn:
-        refresh_live = st.button("🔄 CẬP NHẬT LIVE", type="primary")
+    col_l, col_s = st.columns([1, 3])
+    with col_l: 
+        refresh = st.button("🔄 CẬP NHẬT LIVE", type="primary")
     
-    # Lấy dữ liệu Live
-    live_str, filled_len = fetch_live_minhngoc()
+    # GỌI HÀM TỪ FILE SCRAPER.PY
+    live_str, filled_len = scraper.get_live_xsmb_minhngoc()
     
-    with col_live_status:
+    with col_s:
         if live_str:
             pct = int((filled_len/107)*100)
-            st.markdown(f"<div class='live-progress'>Tiến độ quay: {filled_len}/107 ({pct}%)</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='live-progress'>{filled_len}/107 ({pct}%)</div>", unsafe_allow_html=True)
             st.progress(pct)
         else:
-            st.error("Chưa lấy được dữ liệu Minh Ngọc. Kiểm tra mạng.")
+            st.error(f"Lỗi cào: {filled_len}")
             return
 
-    # HIỂN THỊ BOX DỰ BÁO
+    # ỐP CẦU
     if not st.session_state.get('saved_bridges') and not st.session_state.get('saved_prizes'):
-        st.info("💡 Hãy bấm nút 'QUÉT TỰ ĐỘNG' ở trên để tìm cầu trước. Sau đó kết quả sẽ hiện ở đây.")
+        st.info("Bấm QUÉT AUTO trước.")
     else:
-        st.subheader("⚡ CẦU ĐANG NỔ SỐ")
+        st.subheader("⚡ CẦU ĐANG NỔ")
         
-        # A. NẾU ĐANG SOI VỊ TRÍ HOẶC 3 CÀNG
+        # 1. VỊ TRÍ / 3 CÀNG
         saved_b = st.session_state.get('saved_bridges', [])
         if saved_b:
             cols = st.columns(5)
-            count = 0
+            c = 0
             for idx, br in enumerate(saved_b):
                 i, j = br['i'], br['j']
                 val_i, val_j = live_str[i], live_str[j]
-                
-                if val_i != '?' and val_j != '?': # Đã có số
+                if val_i != '?' and val_j != '?':
                     pred = val_i + val_j
-                    with cols[count % 5]:
-                        st.markdown(f"""
-                        <div class="hot-box">
-                            <div class="hot-title">🔥 Cầu #{idx+1} (Thông {br['streak']}n)</div>
-                            <div style="font-size:10px">{pos_map[i]} + {pos_map[j]}</div>
-                            <div class="hot-val">{pred}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    count += 1
-            if count == 0: st.info("Các cầu vị trí đang chờ quay...")
+                    with cols[c % 5]:
+                        st.markdown(f"<div class='hot-box'><div style='font-size:10px'>Cầu #{idx+1} ({br['streak']}n)</div><div style='font-size:11px'>{pos_map[i]}+{pos_map[j]}</div><div class='hot-val'>{pred}</div></div>", unsafe_allow_html=True)
+                    c += 1
+            if c == 0: st.info("Cầu vị trí chưa nổ số.")
 
-        # B. NẾU ĐANG SOI GIẢI
+        # 2. GIẢI
         saved_p = st.session_state.get('saved_prizes', [])
         if saved_p:
             st.write("Trạng thái Cầu Giải:")
-            # Với cầu giải, ta cần map lại vị trí index
             prize_map = get_prize_map_no_gdb()
-            active_prizes = []
-            
+            found = False
             for p in saved_p:
                 p_name = p['prize']
                 s, e = prize_map.get(p_name)
-                p_str_live = live_str[s:e]
-                
-                if '?' not in p_str_live: # Giải này đã quay xong
-                    active_prizes.append(f"✅ **{p_name}** (Thông {p['streak']}n): {p_str_live}")
-            
-            if active_prizes:
-                for line in active_prizes: st.write(line)
-            else:
-                st.info("Các giải trong danh sách cầu chưa quay xong.")
+                live_p = live_str[s:e]
+                if '?' not in live_p:
+                    st.success(f"✅ **{p_name}** ({p['streak']}n): {live_p}")
+                    found = True
+            if not found: st.info("Các giải chưa quay xong.")
 
 if __name__ == "__main__":
     main()
