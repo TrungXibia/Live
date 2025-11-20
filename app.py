@@ -7,7 +7,7 @@ import json
 # CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Super Soi Cầu: Vị Trí & Giải",
+    page_title="Soi Cầu Pro: Vị Trí & Giải",
     page_icon="💎",
     layout="wide"
 )
@@ -16,8 +16,9 @@ st.markdown("""
 <style>
     .stDataFrame {font-size: 14px;}
     div.stButton > button {width: 100%; height: 3em; font-weight: bold;}
-    /* CSS cho bảng lịch sử gọn */
-    .compact-table {margin-bottom: 10px;}
+    /* Ẩn index bảng */
+    thead tr th:first-child {display:none}
+    tbody th {display:none}
 </style>
 """, unsafe_allow_html=True)
 
@@ -26,11 +27,13 @@ st.markdown("""
 # -----------------------------------------------------------------------------
 API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=30&gameCode=miba"
 
+# Cấu trúc XSMB chuẩn
 XSMB_STRUCTURE = [
     ("GĐB", 1, 5), ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
 ]
 
+# Định nghĩa Bộ Đề
 BO_DE_DICT = {
     "00": ["00", "55", "05", "50"], "11": ["11", "66", "16", "61"],
     "22": ["22", "77", "27", "72"], "33": ["33", "88", "38", "83"],
@@ -73,13 +76,17 @@ def create_position_map():
     return mapping
 
 def get_prize_map_indices():
-    """Map vị trí cho chế độ Nhị Hợp (Bỏ GĐB)"""
+    """
+    Map vị trí cắt chuỗi cho từng giải.
+    QUAN TRỌNG: Bỏ GĐB ra khỏi map này.
+    """
     mapping = {}
     current = 0
     for p_name, count, length in XSMB_STRUCTURE:
         for i in range(1, count + 1):
             start, end = current, current + length
-            if p_name != "GĐB": # Bỏ GĐB
+            # Chỉ thêm vào nếu không phải GĐB
+            if p_name != "GĐB":
                 key = f"{p_name}" if count == 1 else f"{p_name}.{i}"
                 mapping[key] = (start, end)
             current += length
@@ -98,7 +105,6 @@ def process_days_data(raw_list):
         processed_days.append({
             "index": i,
             "issue": record.get('turnNum'),
-            "tam_cang": target_3cang[0],
             "de": de,
             "de_rev": de[::-1],
             "de_set": get_set_name(de),
@@ -107,10 +113,10 @@ def process_days_data(raw_list):
     return processed_days
 
 # -----------------------------------------------------------------------------
-# 3. THUẬT TOÁN (TÍCH HỢP NHIỀU CHẾ ĐỘ)
+# 3. THUẬT TOÁN TÌM CẦU
 # -----------------------------------------------------------------------------
 
-# --- A. SOI VỊ TRÍ (Cổ điển: Index A + Index B) ---
+# === A. SOI VỊ TRÍ (LOGIC CŨ: Body[i] + Body[j]) ===
 def calculate_streak_pos(days_data, idx1, idx2, mode, allow_rev):
     streak = 0
     for day in days_data:
@@ -132,7 +138,7 @@ def find_position_bridges(days_data, mode="straight", allow_rev=False, min_strea
     body = day0['body']
     candidates = []
     
-    # 1. Tìm ứng viên ngày 0
+    # Lọc ứng viên ngày đầu
     for i in range(len(body)):
         for j in range(len(body)):
             if i == j: continue
@@ -145,7 +151,7 @@ def find_position_bridges(days_data, mode="straight", allow_rev=False, min_strea
                 if get_set_name(val) == day0['de_set']: match = True
             if match: candidates.append((i, j))
             
-    # 2. Tính Streak
+    # Check Streak
     finals = []
     for (i, j) in candidates:
         stk = calculate_streak_pos(days_data, i, j, mode, allow_rev)
@@ -155,26 +161,31 @@ def find_position_bridges(days_data, mode="straight", allow_rev=False, min_strea
     finals.sort(key=lambda x: x['streak'], reverse=True)
     return finals
 
-# --- B. SOI GIẢI / NHỊ HỢP (Mới: Giải chứa số) ---
+# === B. SOI GIẢI / NHỊ HỢP (LOGIC MỚI: Giải chứa số) ===
 def check_containment(prize_str, target_de, mode="straight"):
     digits = set(prize_str)
     if mode == "straight":
+        # Phải chứa cả 2 số của Đề (VD: Đề 38 -> Giải phải có 3 và 8)
         return (target_de[0] in digits) and (target_de[1] in digits)
     else: # set
+        # Phải chứa bất kỳ cặp nào trong bộ
         nums = BO_DE_DICT.get(get_set_name(target_de), [])
         for n in nums:
             if (n[0] in digits) and (n[1] in digits): return True
         return False
 
 def find_prize_bridges(days_data, mode="straight", min_streak=3):
-    prize_map = get_prize_map_indices()
+    prize_map = get_prize_map_indices() # Map này đã loại bỏ GĐB
     results = []
+    
     for p_name, (s, e) in prize_map.items():
         streak = 0
         for day in days_data:
             p_str = day['body'][s:e]
-            if check_containment(p_str, day['de'], mode): streak += 1
-            else: break
+            if check_containment(p_str, day['de'], mode): 
+                streak += 1
+            else: 
+                break
         
         if streak >= min_streak:
             results.append({
@@ -182,56 +193,40 @@ def find_prize_bridges(days_data, mode="straight", min_streak=3):
                 "streak": streak,
                 "today_val": days_data[0]['body'][s:e]
             })
+            
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-# --- C. SOI TÂM CÀNG ---
-def find_tam_cang(days_data, min_streak=3):
-    valid = []
-    for k in range(len(days_data[0]['body'])):
-        streak = 0
-        for day in days_data:
-            if day['body'][k] == day['tam_cang']: streak += 1
-            else: break
-        if streak >= min_streak:
-            valid.append({"idx": k, "streak": streak})
-    valid.sort(key=lambda x: x['streak'], reverse=True)
-    return valid
-
 # -----------------------------------------------------------------------------
-# 4. GIAO DIỆN
+# 4. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 
 def main():
-    st.title("🔥 Soi Cầu VIP: Vị Trí & Giải")
+    st.title("🔥 Soi Cầu Pro: Vị Trí & Giải")
     
-    # --- 1. MENU ĐIỀU KHIỂN (ALL IN ONE) ---
+    # --- MENU ĐIỀU KHIỂN TRÊN CÙNG ---
     with st.container():
         c1, c2, c3, c4, c5 = st.columns([2, 1, 1.5, 1.2, 1.5])
         
         with c1:
-            # LỰA CHỌN PHƯƠNG PHÁP CHÍNH
-            method = st.selectbox("💎 PHƯƠNG PHÁP SOI", [
-                "1. Cầu Vị Trí (Ghép 2 số)",
-                "2. Cầu Giải (Nhị Hợp/Ghép Trong)",
-                "3. Cầu 3 Càng (Tâm Càng + Đề)"
+            method = st.selectbox("🎯 PHƯƠNG PHÁP", [
+                "1. Cầu Vị Trí (Ghép 2 index)", 
+                "2. Cầu Giải (Nhị Hợp G1-G7)"
             ])
             
         with c2:
-            min_strk = st.number_input("Ngày thông", 2, 10, 3)
+            min_strk = st.number_input("Min Streak", 2, 15, 3)
             
         with c3:
-            # Tùy chọn Bộ/Thẳng
             is_set = st.checkbox("Soi theo Bộ Đề", value=False)
             mode = "set" if is_set else "straight"
             
         with c4:
-            # Tùy chọn Đảo (chỉ hiện khi Soi Thẳng & Vị trí)
             allow_rev = True
-            if not is_set and ("Vị Trí" in method or "3 Càng" in method):
-                allow_rev = st.checkbox("Đảo AB", value=True)
+            if not is_set and "Vị Trí" in method:
+                allow_rev = st.checkbox("Đảo (AB-BA)", value=True)
             else:
-                st.write("") # Placeholder
+                st.write("")
                 
         with c5:
             st.write("")
@@ -239,100 +234,74 @@ def main():
 
     st.divider()
     
-    # --- 2. DỮ LIỆU ---
+    # --- LẤY DỮ LIỆU ---
     raw = fetch_lottery_data()
-    if not raw: st.error("Lỗi API"); return
+    if not raw: st.error("Lỗi kết nối API"); return
+    
     days = process_days_data(raw)
     pos_map = create_position_map()
     
-    # --- 3. LỊCH SỬ GỌN (1 DÒNG) ---
+    # --- BẢNG LỊCH SỬ 5 NGÀY (GỌN 1 DÒNG) ---
     st.subheader("📅 Kết quả 5 ngày gần nhất")
     if len(days) >= 5:
-        hist = [{"Ngày": days[i]['issue'], "Đề": days[i]['de'], "Bộ": days[i]['de_set']} for i in range(5)]
-        st.dataframe(pd.DataFrame(hist).T, use_container_width=True)
+        hist_data = []
+        for i in range(5):
+            hist_data.append({
+                "Ngày": days[i]['issue'],
+                "Đề": days[i]['de'],
+                "Bộ": days[i]['de_set']
+            })
+        # Dùng bảng Transpose để hiện ngang
+        st.dataframe(pd.DataFrame(hist_data).T, use_container_width=True)
     
-    # --- 4. XỬ LÝ QUÉT (Dựa trên Method đã chọn) ---
+    # --- THỰC HIỆN QUÉT ---
     if btn:
         st.write("---")
         
-        # === MODE 1: SOI VỊ TRÍ ===
+        # --- METHOD 1: CẦU VỊ TRÍ (Index A + Index B) ---
         if "Vị Trí" in method:
             st.subheader(f"🌐 KẾT QUẢ CẦU VỊ TRÍ ({mode.upper()})")
+            
             with st.spinner("Đang quét 10.000 cặp vị trí..."):
                 res = find_position_bridges(days, mode=mode, allow_rev=allow_rev, min_streak=min_strk)
             
             if res:
+                # Hiển thị Top 50 cầu đẹp
                 data_show = []
-                for item in res[:50]: # Top 50
+                for item in res[:50]:
                     idx1, idx2 = item['idx1'], item['idx2']
                     val_today = days[0]['body'][idx1] + days[0]['body'][idx2]
                     data_show.append({
-                        "Vị trí 1": pos_map[idx1],
-                        "Vị trí 2": pos_map[idx2],
+                        "Vị trí 1": f"{pos_map[idx1]}",
+                        "Vị trí 2": f"{pos_map[idx2]}",
                         "Thông": f"{item['streak']} ngày 🔥",
                         "Báo số": val_today
                     })
                 st.dataframe(pd.DataFrame(data_show), use_container_width=True)
             else:
-                st.warning(f"Không tìm thấy cặp vị trí nào thông {min_strk} ngày.")
+                st.warning(f"Không tìm thấy cầu vị trí nào thông {min_strk} ngày.")
 
-        # === MODE 2: SOI GIẢI (NHỊ HỢP) ===
+        # --- METHOD 2: CẦU GIẢI / NHỊ HỢP (Ghép trong Giải) ---
         elif "Cầu Giải" in method:
             st.subheader(f"🔎 KẾT QUẢ CẦU GIẢI / NHỊ HỢP ({mode.upper()})")
-            st.caption("Tìm các giải (G1-G7) chứa đủ các chữ số của Đề (hoặc Bộ đề).")
+            st.markdown("*Quy tắc: Xét G1-G7. Giải nào có chứa đủ các chữ số tạo thành Đề (hoặc Bộ Đề) thì tính là Cầu.*")
             
-            with st.spinner("Đang phân tích các giải..."):
+            with st.spinner("Đang phân tích các giải (Bỏ qua GĐB)..."):
                 res = find_prize_bridges(days, mode=mode, min_streak=min_strk)
-                
+            
             if res:
                 data_show = []
                 for item in res:
                     data_show.append({
-                        "Giải": item['prize'],
+                        "Tên Giải": item['prize'],
                         "Thông": f"{item['streak']} ngày 🔥",
-                        "Dữ liệu giải hôm nay": item['today_val']
+                        "Dữ liệu hôm nay": item['today_val'],
+                        # Logic gợi ý cho ngày mai: Dựa vào dữ liệu hôm nay, user tự ghép
+                        "Ghi chú": "Chứa số tạo Đề"
                     })
                 st.dataframe(pd.DataFrame(data_show), use_container_width=True)
-                st.success(f"Top 1: Giải **{res[0]['prize']}** đang chạy rất mượt!")
             else:
-                st.warning(f"Không có giải nào chứa đề thông {min_strk} ngày.")
-
-        # === MODE 3: SOI 3 CÀNG ===
-        elif "3 Càng" in method:
-            st.subheader("🎯 KẾT QUẢ SOI 3 CÀNG (TÂM CÀNG + ĐỀ)")
-            
-            c1, c2 = st.columns(2)
-            
-            # A. Tìm Càng
-            tc_res = find_tam_cang(days, min_streak=min_strk)
-            with c1:
-                st.info(f"🅰️ Cầu Tâm Càng ({len(tc_res)})")
-                if tc_res:
-                    tc_show = [{"Vị trí": pos_map[r['idx']], "Thông": f"{r['streak']} ngày", "Báo": days[0]['body'][r['idx']]} for r in tc_res]
-                    st.dataframe(pd.DataFrame(tc_show), use_container_width=True)
-                else: st.warning("Không có cầu càng.")
-
-            # B. Tìm Đề (Vị trí)
-            de_res = find_position_bridges(days, mode=mode, allow_rev=allow_rev, min_streak=min_strk)
-            with c2:
-                st.success(f"🅱️ Cầu Đề ({len(de_res)})")
-                if de_res:
-                    de_show = []
-                    for r in de_res[:20]:
-                        val = days[0]['body'][r['idx1']] + days[0]['body'][r['idx2']]
-                        de_show.append({"Vị trí 1": pos_map[r['idx1']], "Vị trí 2": pos_map[r['idx2']], "Báo": val})
-                    st.dataframe(pd.DataFrame(de_show), use_container_width=True)
-                else: st.warning("Không có cầu đề.")
-            
-            # C. Ghép
-            if tc_res and de_res:
-                st.divider()
-                st.markdown("### 💎 Gợi ý ghép 3 Càng hôm nay")
-                top_cang = tc_res[0]
-                top_de = de_res[0]
-                val_cang = days[0]['body'][top_cang['idx']]
-                val_de = days[0]['body'][top_de['idx1']] + days[0]['body'][top_de['idx2']]
-                st.metric("Bạch Thủ 3 Càng (Top 1)", f"{val_cang}{val_de}")
+                st.warning(f"Không có giải nào (G1-G7) chứa đề thông {min_strk} ngày.")
 
 if __name__ == "__main__":
     main()
