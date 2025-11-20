@@ -4,25 +4,26 @@ import pandas as pd
 import json
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH TRANG & CSS
+# 1. CẤU HÌNH & CSS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu Pro: Fix Lỗi", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Auto Scan: Max Streak", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
     .stDataFrame {font-size: 14px;}
-    div.stButton > button {width: 100%; height: 3em; font-weight: bold;}
+    div.stButton > button {width: 100%; height: 3em; font-weight: bold; background-color: #FF4B4B; color: white;}
     thead tr th:first-child {display:none}
     tbody th {display:none}
+    .big-font {font-size:20px !important; font-weight: bold;}
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. CONSTANTS & CẤU TRÚC
+# 2. DATA & CONSTANTS
 # -----------------------------------------------------------------------------
-API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=30&gameCode=miba"
+API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=50&gameCode=miba" 
+# Tăng limit lên 50 để quét được cầu siêu dài
 
-# Cấu trúc đầy đủ để map tên
 XSMB_STRUCTURE = [
     ("GĐB", 1, 5), ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
@@ -68,9 +69,6 @@ def process_data(raw):
         full = parse_detail(rec.get('detail', ''))
         if len(full) != 107: continue
         
-        # Cắt lấy đề và body
-        # full[0:5] là GĐB -> Index 0,1,2,3,4
-        # full[5:] là G1 trở đi
         target_3c = full[2:5]
         de = target_3c[1:]
         
@@ -85,7 +83,6 @@ def process_data(raw):
     return processed
 
 def get_pos_map():
-    # Tạo map tên vị trí
     m = []
     for p, c, l in XSMB_STRUCTURE:
         for i in range(1, c+1):
@@ -93,7 +90,6 @@ def get_pos_map():
     return m
 
 def get_prize_map_no_gdb():
-    # Map vị trí các giải (G1->G7), bỏ GĐB
     m = {}
     curr = 0
     for p, c, l in XSMB_STRUCTURE:
@@ -106,16 +102,17 @@ def get_prize_map_no_gdb():
     return m
 
 # -----------------------------------------------------------------------------
-# 4. THUẬT TOÁN SOI CẦU (CORE)
+# 4. THUẬT TOÁN TỰ ĐỘNG (AUTO STREAK CALCULATION)
 # -----------------------------------------------------------------------------
 
-# --- A. SOI VỊ TRÍ (CẶP INDEX) ---
-def scan_positions(data, mode, allow_rev, min_streak):
+# --- A. SOI VỊ TRÍ ---
+def auto_scan_positions(data, mode, allow_rev):
     if not data: return []
     day0 = data[0]
     body = day0['body']
     
-    # Tìm ứng viên ngày 0 (Bắt đầu từ 5 để BỎ GĐB)
+    # Bước 1: Tìm những cặp ăn ngày hôm nay (Ngày 0)
+    # Bắt đầu từ index 5 (BỎ GĐB)
     candidates = []
     start_idx = 5 
     
@@ -132,7 +129,7 @@ def scan_positions(data, mode, allow_rev, min_streak):
             
             if match: candidates.append((i, j))
     
-    # Check streak
+    # Bước 2: Với mỗi ứng viên, lùi về quá khứ đếm xem thông bao nhiêu ngày
     results = []
     for (i, j) in candidates:
         streak = 0
@@ -146,11 +143,12 @@ def scan_positions(data, mode, allow_rev, min_streak):
                 if get_set(val) == day['de_set']: match = True
             
             if match: streak += 1
-            else: break
-            
-        if streak >= min_streak:
+            else: break # Gãy cầu -> Dừng đếm
+        
+        if streak >= 2: # Chỉ lấy cầu từ 2 ngày trở lên
             results.append({"i": i, "j": j, "streak": streak})
             
+    # Bước 3: Sắp xếp từ cao xuống thấp
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
@@ -165,7 +163,7 @@ def check_prize(p_str, de, mode):
             if (n[0] in digits) and (n[1] in digits): return True
         return False
 
-def scan_prizes(data, mode, min_streak):
+def auto_scan_prizes(data, mode):
     prize_map = get_prize_map_no_gdb()
     results = []
     
@@ -176,7 +174,7 @@ def scan_prizes(data, mode, min_streak):
             if check_prize(p_str, day['de'], mode): streak += 1
             else: break
             
-        if streak >= min_streak:
+        if streak >= 2:
             results.append({
                 "prize": p_name,
                 "streak": streak,
@@ -186,46 +184,42 @@ def scan_prizes(data, mode, min_streak):
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-# --- C. SOI TÂM CÀNG (BỎ GĐB) ---
-def scan_tam_cang(data, min_streak):
+# --- C. SOI TÂM CÀNG ---
+def auto_scan_tam_cang(data):
     res = []
-    # Quét từ index 5 trở đi
     for k in range(5, len(data[0]['body'])):
         streak = 0
         for day in data:
             if day['body'][k] == day['tam_cang']: streak += 1
             else: break
-        if streak >= min_streak:
+        if streak >= 2:
             res.append({"idx": k, "streak": streak})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
 # -----------------------------------------------------------------------------
-# 5. GIAO DIỆN CHÍNH (MAIN)
+# 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🔥 Soi Cầu Pro (Fixed)")
+    st.title("⚡ Auto Soi Cầu: Tự Động Quét & Sắp Xếp")
     
-    # --- MENU ---
-    c1, c2, c3, c4, c5 = st.columns([2, 1, 1.5, 1.2, 1.5])
+    # --- MENU ĐƠN GIẢN ---
+    c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
     with c1:
-        method = st.selectbox("Phương Pháp", ["1. Cầu Vị Trí (Cặp Số)", "2. Cầu Giải (Nhị Hợp)", "3. Cầu 3 Càng"])
+        method = st.selectbox("🎯 Chọn Phương Pháp", ["1. Cầu Vị Trí (Cặp Số)", "2. Cầu Giải (Nhị Hợp)", "3. Cầu 3 Càng"])
     with c2:
-        min_s = st.number_input("Min Streak", 2, 20, 3)
-    with c3:
         is_set = st.checkbox("Soi Bộ Đề", False)
         mode = "set" if is_set else "straight"
-    with c4:
+    with c3:
         allow_rev = True
-        if not is_set and "Vị Trí" in method:
+        if not is_set and ("Vị Trí" in method or "3 Càng" in method):
             allow_rev = st.checkbox("Đảo AB", True)
-    with c5:
+    with c4:
         st.write("")
-        btn = st.button("🚀 QUÉT", type="primary")
+        btn = st.button("QUÉT TỰ ĐỘNG", type="primary")
 
     st.divider()
     
-    # --- LOAD DATA ---
     raw = fetch_data()
     if not raw:
         st.error("Lỗi kết nối API.")
@@ -243,64 +237,40 @@ def main():
     # --- EXECUTE ---
     if btn:
         st.write("---")
+        st.markdown("### 🏆 BẢNG XẾP HẠNG CẦU (DÀI NHẤT Ở TRÊN)")
         
         # 1. VỊ TRÍ
         if "Vị Trí" in method:
-            st.subheader(f"🌐 CẦU VỊ TRÍ (G1-G7) - {mode.upper()}")
-            with st.spinner("Đang quét..."):
-                res = scan_positions(data, mode, allow_rev, min_s)
+            with st.spinner("Đang tự động tính toán streak cho hàng ngàn vị trí..."):
+                res = auto_scan_positions(data, mode, allow_rev)
             
             if res:
                 rows = []
-                for r in res[:50]:
+                for r in res[:100]: # Show top 100
                     val = data[0]['body'][r['i']] + data[0]['body'][r['j']]
                     rows.append({
+                        "Hạng": f"#{len(rows)+1}",
                         "Vị trí 1": pos_map[r['i']],
                         "Vị trí 2": pos_map[r['j']],
-                        "Thông": f"{r['streak']} ngày 🔥",
-                        "Báo số": val
+                        "Độ Dài Cầu": f"{r['streak']} ngày 🔥",
+                        "Báo số hôm nay": val
                     })
                 st.dataframe(pd.DataFrame(rows), use_container_width=True)
             else:
-                st.warning("Không tìm thấy cầu nào.")
+                st.warning("Không tìm thấy cầu nào chạy thông trên 2 ngày.")
 
         # 2. NHỊ HỢP
         elif "Cầu Giải" in method:
-            st.subheader(f"🔎 CẦU GIẢI (G1-G7) - {mode.upper()}")
-            res = scan_prizes(data, mode, min_s)
+            with st.spinner("Đang quét G1-G7..."):
+                res = auto_scan_prizes(data, mode)
             
             if res:
-                rows = [{"Giải": r['prize'], "Thông": f"{r['streak']} ngày 🔥", "Dữ liệu": r['val']} for r in res]
-                st.dataframe(pd.DataFrame(rows), use_container_width=True)
-            else:
-                st.warning("Không tìm thấy giải nào.")
-
-        # 3. 3 CÀNG
-        elif "3 Càng" in method:
-            st.subheader("🎯 3 CÀNG (G1-G7)")
-            col_a, col_b = st.columns(2)
-            
-            # Tìm càng
-            tc = scan_tam_cang(data, min_s)
-            with col_a:
-                st.info(f"Tâm Càng ({len(tc)})")
-                if tc:
-                    rows = [{"Vị trí": pos_map[r['idx']], "Thông": f"{r['streak']} ngày"} for r in tc]
-                    st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-            # Tìm đề
-            de = scan_positions(data, mode, allow_rev, min_s)
-            with col_b:
-                st.success(f"Cầu Đề ({len(de)})")
-                if de:
-                    rows = []
-                    for r in de[:20]:
-                        val = data[0]['body'][r['i']] + data[0]['body'][r['j']]
-                        rows.append({"V1": pos_map[r['i']], "V2": pos_map[r['j']], "Báo": val})
-                    st.dataframe(pd.DataFrame(rows), use_container_width=True)
-            
-            if tc and de:
-                st.success(f"Gợi ý Top 1: {data[0]['body'][tc[0]['idx']]}{data[0]['body'][de[0]['i']] + data[0]['body'][de[0]['j']]}")
-
-if __name__ == "__main__":
-    main()
+                rows = []
+                for r in res:
+                    rows.append({
+                         "Hạng": f"#{len(rows)+1}",
+                         "Tên Giải": r['prize'],
+                         "Độ Dài Cầu": f"{r['streak']} ngày 🔥",
+                         "Dữ liệu giải": r['val']
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True
