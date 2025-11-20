@@ -306,4 +306,19 @@ def main():
                 if de_res:
                     de_show = []
                     for r in de_res[:20]:
-                        val = days[0]['body'][r['idx1']] + da
+                        val = days[0]['body'][r['idx1']] + days[0]['body'][r['idx2']]
+                        de_show.append({"Vị trí 1": pos_map[r['idx1']], "Vị trí 2": pos_map[r['idx2']], "Báo": val})
+                    st.dataframe(pd.DataFrame(de_show), use_container_width=True)
+                else: st.warning("Không có cầu đề.")
+            
+            if tc_res and de_res:
+                st.divider()
+                st.markdown("### 💎 Gợi ý 3 Càng (Top 1)")
+                top_cang = tc_res[0]
+                top_de = de_res[0]
+                val_cang = days[0]['body'][top_cang['idx']]
+                val_de = days[0]['body'][top_de['idx1']] + days[0]['body'][top_de['idx2']]
+                st.metric("Bạch Thủ", f"{val_cang}{val_de}")
+
+if __name__ == "__main__":
+    main()
