@@ -2,14 +2,13 @@ import streamlit as st
 import requests
 import pandas as pd
 import json
-import itertools
 
 # -----------------------------------------------------------------------------
 # CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Super Soi Cầu: 3 Càng - Lô - Đề",
-    page_icon="💎",
+    page_title="Soi Cầu: Tâm Càng & Đề",
+    page_icon="🎯",
     layout="wide"
 )
 
@@ -17,12 +16,12 @@ st.markdown("""
 <style>
     .stDataFrame {font-size: 14px;}
     div[data-testid="stExpander"] {border: 1px solid #e6e6e6; border-radius: 5px;}
-    .highlight {color: #d63384; font-weight: bold;}
+    h3 {color: #0f54c9;}
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH API & DỮ LIỆU
+# 1. CẤU HÌNH & DỮ LIỆU
 # -----------------------------------------------------------------------------
 API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=10&gameCode=miba"
 
@@ -31,7 +30,6 @@ XSMB_STRUCTURE = [
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
 ]
 
-# BỘ ĐỀ (Chỉ dùng cho 2 số)
 BO_DE_DICT = {
     "00": ["00", "55", "05", "50"], "11": ["11", "66", "16", "61"],
     "22": ["22", "77", "27", "72"], "33": ["33", "88", "38", "83"],
@@ -46,11 +44,7 @@ BO_DE_DICT = {
     "24": ["24", "42", "29", "92", "74", "47", "79", "97"],
     "34": ["34", "43", "39", "93", "84", "48", "89", "98"]
 }
-
-NUMBER_TO_SET_MAP = {}
-for set_name, numbers in BO_DE_DICT.items():
-    for num in numbers:
-        NUMBER_TO_SET_MAP[str(num)] = set_name
+NUMBER_TO_SET_MAP = {str(n): s for s, nums in BO_DE_DICT.items() for n in nums}
 
 # -----------------------------------------------------------------------------
 # 2. HÀM XỬ LÝ DỮ LIỆU
@@ -59,294 +53,219 @@ for set_name, numbers in BO_DE_DICT.items():
 @st.cache_data(ttl=60)
 def fetch_lottery_data():
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        response = requests.get(API_URL, headers=headers, timeout=10)
-        data = response.json()
-        if 't' in data and isinstance(data['t'], dict) and 'issueList' in data['t']:
-            return data['t']['issueList']
-        return None
-    except Exception:
-        return None
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(API_URL, headers=headers, timeout=10).json()
+        return res.get('t', {}).get('issueList', [])
+    except: return None
 
 def parse_detail_to_107_chars(detail_str):
     try:
-        if not detail_str: return ""
-        raw_groups = json.loads(detail_str)
-        full_str = ""
-        for group in raw_groups:
-            full_str += group.replace(",", "").strip()
-        return full_str
-    except:
-        return ""
+        return "".join([g.replace(",", "").strip() for g in json.loads(detail_str)]) if detail_str else ""
+    except: return ""
 
 def create_position_map():
     mapping = []
-    for prize_name, count, length in XSMB_STRUCTURE:
-        for c in range(1, count + 1):
-            for l in range(1, length + 1):
-                mapping.append(f"{prize_name}.{c}.{l}")
+    for p, c, l in XSMB_STRUCTURE:
+        for i in range(1, c+1):
+            for j in range(1, l+1): mapping.append(f"{p}.{i}.{j}")
     return mapping
 
-def get_set_name(number_str):
-    return NUMBER_TO_SET_MAP.get(str(number_str), "Unknown")
+def get_set_name(n): return NUMBER_TO_SET_MAP.get(str(n), "?")
 
 def process_days_data(raw_list, num_days):
     processed_days = []
     pos_map = create_position_map()
-    limit = min(num_days, len(raw_list))
     
-    for i in range(limit):
+    for i in range(min(num_days, len(raw_list))):
         record = raw_list[i]
-        full_str = parse_detail_to_107_chars(record.get('detail', ''))
+        full = parse_detail_to_107_chars(record.get('detail', ''))
+        if len(full) != 107: continue
         
-        if len(full_str) != 107: continue 
-            
-        target_2 = full_str[3:5] # GĐB 2 số cuối
-        target_3 = full_str[2:5] # GĐB 3 số cuối (3 càng)
-        body = full_str[5:]
+        target_3cang = full[2:5] # Ví dụ 589 (Tâm càng=5, Đề=89)
         
         processed_days.append({
             "index": i,
             "issue": record.get('turnNum'),
-            "target_2": target_2,
-            "target_2_rev": target_2[::-1],
-            "target_set": get_set_name(target_2),
-            "target_3": target_3,
-            "body": body
+            "tam_cang": target_3cang[0],     # Chữ số hàng trăm
+            "de": target_3cang[1:],          # 2 số cuối
+            "de_rev": target_3cang[1:][::-1],
+            "de_set": get_set_name(target_3cang[1:]),
+            "body": full[5:]
         })
-        
     return processed_days, pos_map
 
 # -----------------------------------------------------------------------------
-# 3. THUẬT TOÁN TÌM CẦU (CORE LOGIC)
+# 3. THUẬT TOÁN TÌM CẦU (TÁCH BIỆT)
 # -----------------------------------------------------------------------------
 
-def find_bridges_2_positions(days_data, mode="straight", allow_rev=False):
-    """Tìm cầu 2 vị trí (Bạch thủ / Bộ đề)"""
+def find_tam_cang_positions(days_data):
+    """Tìm 1 vị trí duy nhất chạy thông giải Tâm Càng (Hàng trăm)"""
+    if not days_data: return []
+    
+    valid_indices = []
+    body_len = len(days_data[0]['body'])
+    
+    for k in range(body_len):
+        streak = True
+        for day in days_data:
+            # So sánh ký tự tại vị trí k với Tâm càng của ngày đó
+            if day['body'][k] != day['tam_cang']:
+                streak = False
+                break
+        if streak:
+            valid_indices.append(k)
+            
+    return valid_indices
+
+def find_de_pairs(days_data, mode="straight", allow_rev=False):
+    """Tìm cặp vị trí chạy thông giải Đề"""
     if not days_data: return []
     
     day0 = days_data[0]
     body = day0['body']
-    candidate_pairs = []
+    candidates = []
     
-    # Lọc ứng viên ngày mới nhất
+    # 1. Lọc ứng viên ngày đầu
     for i in range(len(body)):
         for j in range(len(body)):
             if i == j: continue
             val = body[i] + body[j]
+            match = False
             
-            is_match = False
             if mode == "straight":
-                if val == day0['target_2']: is_match = True
-                elif allow_rev and val == day0['target_2_rev']: is_match = True
-            else: # mode set
-                if get_set_name(val) == day0['target_set']: is_match = True
+                if val == day0['de']: match = True
+                elif allow_rev and val == day0['de_rev']: match = True
+            else: # set
+                if get_set_name(val) == day0['de_set']: match = True
             
-            if is_match:
-                candidate_pairs.append((i, j))
-    
-    # Kiểm tra streak
-    final_pairs = []
-    for (i, j) in candidate_pairs:
-        streak_ok = True
+            if match: candidates.append((i, j))
+            
+    # 2. Check streak
+    finals = []
+    for (i, j) in candidates:
+        streak = True
         for k in range(1, len(days_data)):
-            day_k = days_data[k]
-            body_k = day_k['body']
-            val_k = body_k[i] + body_k[j]
+            day = days_data[k]
+            val = day['body'][i] + day['body'][j]
             
             if mode == "straight":
                 if allow_rev:
-                    if val_k != day_k['target_2'] and val_k != day_k['target_2_rev']:
-                        streak_ok = False; break
+                    if val != day['de'] and val != day['de_rev']: streak = False; break
                 else:
-                    if val_k != day_k['target_2']:
-                        streak_ok = False; break
+                    if val != day['de']: streak = False; break
             else:
-                if get_set_name(val_k) != day_k['target_set']:
-                    streak_ok = False; break
+                if get_set_name(val) != day['de_set']: streak = False; break
         
-        if streak_ok: final_pairs.append((i, j))
-            
-    return final_pairs
-
-def find_bridges_3_positions(days_data):
-    """
-    Tìm cầu 3 càng (3 vị trí ghép lại thành 3 số cuối GĐB).
-    Thuật toán tối ưu: Không dùng 3 vòng lặp lồng nhau (O(N^3)).
-    """
-    if not days_data: return []
-    
-    day0 = days_data[0]
-    target0 = day0['target_3'] # Ví dụ "589"
-    body0 = day0['body']
-    
-    # 1. Tối ưu hóa việc tìm ứng viên ngày 0 bằng Map
-    # Tìm tất cả vị trí của từng chữ số trong target
-    # Ví dụ: target="589" -> positions_of_5, positions_of_8, positions_of_9
-    
-    pos_idx_0 = [i for i, char in enumerate(body0) if char == target0[0]]
-    pos_idx_1 = [i for i, char in enumerate(body0) if char == target0[1]]
-    pos_idx_2 = [i for i, char in enumerate(body0) if char == target0[2]]
-    
-    candidate_triplets = []
-    
-    # Tạo tổ hợp từ các vị trí tìm được (Cartesian product)
-    for i in pos_idx_0:
-        for j in pos_idx_1:
-            if i == j: continue
-            for k in pos_idx_2:
-                if k == i or k == j: continue
-                # Đây là tổ hợp tạo ra đúng 3 càng ngày 0
-                candidate_triplets.append((i, j, k))
-    
-    # 2. Kiểm tra Streak các ngày cũ
-    final_triplets = []
-    
-    for (i, j, k) in candidate_triplets:
-        streak_ok = True
-        for d in range(1, len(days_data)):
-            day_d = days_data[d]
-            # Giá trị ghép từ 3 vị trí này ở ngày quá khứ
-            val_d = day_d['body'][i] + day_d['body'][j] + day_d['body'][k]
-            
-            # So sánh với 3 càng của ngày đó
-            if val_d != day_d['target_3']:
-                streak_ok = False
-                break
+        if streak: finals.append((i, j))
         
-        if streak_ok:
-            final_triplets.append((i, j, k))
-            
-    return final_triplets
+    return finals
 
 # -----------------------------------------------------------------------------
-# 4. GIAO DIỆN NGƯỜI DÙNG
+# 4. GIAO DIỆN
 # -----------------------------------------------------------------------------
 
 def main():
-    st.title("💎 Super Soi Cầu: 3 Càng - Lô - Đề")
+    st.title("🎯 Soi Cầu: Tâm Càng + Cầu Đề = 3 Càng")
     
     # --- SIDEBAR ---
     with st.sidebar:
         st.header("⚙️ Cấu Hình")
+        days = st.slider("Số ngày chạy thông", 2, 5, 3)
         
-        scan_days = st.slider("Số ngày chạy thông", 2, 5, 3)
-        
-        # Thêm lựa chọn 3 Càng
-        scan_mode = st.radio("Loại cầu", [
-            "Soi Đề (2 số) - Thẳng",
-            "Soi Đề (2 số) - Bộ",
-            "Soi 3 Càng (3 số GĐB)"
-        ])
-        
-        # Cấu hình phụ
+        mode = st.radio("Chế độ soi Đề", ["Thẳng (Bạch thủ)", "Bộ Đề (Hệ)"])
         allow_rev = False
-        if scan_mode == "Soi Đề (2 số) - Thẳng":
-            st.caption("--- Tùy chọn ---")
-            allow_rev = st.checkbox("Chấp nhận đảo (AB-BA)", value=True)
+        if "Thẳng" in mode:
+            allow_rev = st.checkbox("Chấp nhận Đề Đảo (AB-BA)", value=True)
             
-        if st.button("🚀 QUÉT CẦU NGAY", type="primary"):
-            st.session_state['run_scan'] = True
+        if st.button("🚀 QUÉT NGAY", type="primary"):
+            st.session_state['scan'] = True
 
-    # --- DATA FETCHING ---
-    raw_list = fetch_lottery_data()
-    if not raw_list:
-        st.error("Lỗi API.")
-        return
+    # --- DATA ---
+    raw = fetch_lottery_data()
+    if not raw: st.error("Lỗi API"); return
+    
+    data, pmap = process_days_data(raw, days)
+    if len(data) < days: st.warning("Thiếu dữ liệu"); return
 
-    processed_days, pos_map = process_days_data(raw_list, scan_days)
-    if len(processed_days) < scan_days:
-        st.warning("Không đủ dữ liệu.")
-        return
+    # --- HIỂN THỊ KQ ---
+    st.subheader(f"📅 Kết quả {days} ngày qua")
+    cols = st.columns(days)
+    for i, d in enumerate(data):
+        with cols[i]:
+            st.markdown(f"**{d['issue']}**")
+            st.code(f"3C: {d['tam_cang']}{d['de']}", language="text")
+            st.caption(f"Càng: {d['tam_cang']} | Đề: {d['de']}")
 
-    # --- HIỂN THỊ KẾT QUẢ CÁC KỲ ---
-    st.subheader(f"📅 Kết quả {scan_days} ngày qua")
-    cols = st.columns(scan_days)
-    for idx, day in enumerate(processed_days):
-        with cols[idx]:
-            st.markdown(f"**{day['issue']}**")
-            if "3 Càng" in scan_mode:
-                # Hiển thị 3 số
-                st.code(f"3 Càng: {day['target_3']}", language="text")
-            else:
-                # Hiển thị 2 số
-                st.code(f"Đề: {day['target_2']}", language="text")
-                if "Bộ" in scan_mode:
-                    st.caption(f"Bộ: {day['target_set']}")
-
-    # --- XỬ LÝ QUÉT CẦU ---
-    if st.session_state.get('run_scan'):
-        
+    # --- QUÉT ---
+    if st.session_state.get('scan'):
         st.divider()
         
-        if "3 Càng" in scan_mode:
-            # --- LOGIC 3 CÀNG ---
-            with st.spinner("Đang quét thuật toán 3 càng (Siêu tốc)..."):
-                results = find_bridges_3_positions(processed_days)
-                
-            st.header(f"🔥 TÌM THẤY {len(results)} CẦU 3 CÀNG THÔNG {scan_days} NGÀY")
-            
-            if results:
-                df_data = []
-                for (i, j, k) in results:
-                    row = {
-                        "Vị trí 1": f"{pos_map[i]}",
-                        "Vị trí 2": f"{pos_map[j]}",
-                        "Vị trí 3": f"{pos_map[k]}",
-                    }
-                    for day in processed_days:
-                        val = day['body'][i] + day['body'][j] + day['body'][k]
-                        row[f"Ngày {day['issue']}"] = val
-                    df_data.append(row)
-                
-                st.dataframe(pd.DataFrame(df_data), use_container_width=True)
-            else:
-                st.warning("Không có cầu 3 càng nào chạy thông (Điều này rất bình thường vì xác suất 3 càng cực khó).")
-                
+        # 1. QUÉT TÂM CÀNG (HÀNG TRĂM)
+        with st.spinner("Đang quét Tâm Càng..."):
+            tc_indices = find_tam_cang_positions(data)
+        
+        # 2. QUÉT CẦU ĐỀ
+        with st.spinner("Đang quét Cầu Đề..."):
+            mode_key = "straight" if "Thẳng" in mode else "set"
+            de_pairs = find_de_pairs(data, mode=mode_key, allow_rev=allow_rev)
+        
+        # --- HIỂN THỊ KẾT QUẢ TÁCH BIỆT ---
+        
+        # BẢNG 1: CẦU TÂM CÀNG
+        st.subheader(f"🅰️ CẦU TÂM CÀNG ({len(tc_indices)} vị trí)")
+        st.markdown("*Là các vị trí chạy thông đúng số hàng trăm của GĐB.*")
+        
+        if tc_indices:
+            tc_data = []
+            for idx in tc_indices:
+                row = {"Vị trí": f"{pmap[idx]} (Idx {idx})"}
+                for d in data: row[f"Ngày {d['issue']}"] = d['body'][idx]
+                tc_data.append(row)
+            st.dataframe(pd.DataFrame(tc_data), use_container_width=True)
         else:
-            # --- LOGIC 2 SỐ (ĐỀ) ---
-            mode_key = "set" if "Bộ" in scan_mode else "straight"
-            
-            with st.spinner("Đang quét cầu đề..."):
-                results = find_bridges_2_positions(processed_days, mode=mode_key, allow_rev=allow_rev)
-                
-            st.header(f"🔥 TÌM THẤY {len(results)} CẦU ĐỀ THÔNG {scan_days} NGÀY")
-            
-            if results:
-                df_data = []
-                for (i, j) in results:
-                    row = {
-                        "Vị trí 1": f"{pos_map[i]}",
-                        "Vị trí 2": f"{pos_map[j]}",
-                    }
-                    for day in processed_days:
-                        val = day['body'][i] + day['body'][j]
-                        
-                        # Hiển thị đẹp
-                        display_val = val
-                        if mode_key == "straight":
-                            if val == day['target_2']: display_val += " (Thẳng)"
-                            elif val == day['target_2_rev']: display_val += " (Đảo)"
-                        else:
-                            display_val += f" (Bộ {get_set_name(val)})"
-                            
-                        row[f"Ngày {day['issue']}"] = display_val
-                    df_data.append(row)
-                
-                st.dataframe(pd.DataFrame(df_data), use_container_width=True)
-            else:
-                st.warning("Không tìm thấy cầu nào.")
+            st.warning("Không tìm thấy cầu Tâm Càng nào chạy thông.")
 
-    # Tra cứu bộ đề (ẩn khi đang soi 3 càng)
-    if "3 Càng" not in scan_mode:
-        with st.expander("📖 Tra cứu Bộ Đề"):
-            c1, c2, c3 = st.columns(3)
-            sets = list(BO_DE_DICT.items())
-            sz = (len(sets)//3) + 1
-            for i, col in enumerate([c1, c2, c3]):
-                with col:
-                    for n, nums in sets[i*sz : (i+1)*sz]:
-                        st.text(f"Bộ {n}: {', '.join(map(str, nums))}")
+        st.divider()
+
+        # BẢNG 2: CẦU ĐỀ
+        st.subheader(f"🅱️ CẦU ĐỀ ({len(de_pairs)} cặp)")
+        st.markdown(f"*Là các cặp vị trí chạy thông giải Đề (Chế độ: {mode}).*")
+        
+        if de_pairs:
+            de_data = []
+            for (i, j) in de_pairs:
+                row = {"Vị trí 1": pmap[i], "Vị trí 2": pmap[j]}
+                for d in data:
+                    val = d['body'][i] + d['body'][j]
+                    # Format hiển thị
+                    display = val
+                    if "Thẳng" in mode:
+                        if val == d['de']: display += " (Thẳng)"
+                        elif val == d['de_rev']: display += " (Đảo)"
+                    else:
+                        display += f" (Bộ {d['de_set']})"
+                    row[f"Ngày {d['issue']}"] = display
+                de_data.append(row)
+            st.dataframe(pd.DataFrame(de_data), use_container_width=True)
+        else:
+            st.warning("Không tìm thấy cầu Đề nào chạy thông.")
+            
+        # TỔNG HỢP
+        if tc_indices and de_pairs:
+            st.success(f"💡 MẸO: Hãy ghép bất kỳ vị trí ở Bảng A với cặp ở Bảng B để tạo thành dàn 3 Càng siêu chuẩn!")
+            
+            with st.expander("Xem ví dụ ghép 3 Càng"):
+                # Lấy ví dụ 1 cái càng + 1 cầu đề đầu tiên
+                k = tc_indices[0]
+                i, j = de_pairs[0]
+                st.markdown(f"**Ví dụ ghép:**")
+                st.markdown(f"- Càng: `{pmap[k]}`")
+                st.markdown(f"- Đề: `{pmap[i]}` + `{pmap[j]}`")
+                st.markdown("---")
+                for d in data:
+                    cang = d['body'][k]
+                    de = d['body'][i] + d['body'][j]
+                    st.text(f"Ngày {d['issue']}: {cang} (Càng) + {de} (Đề) -> 3 Càng về {d['tam_cang']}{d['de']}")
 
 if __name__ == "__main__":
     main()
