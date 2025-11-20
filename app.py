@@ -7,8 +7,8 @@ import json
 # CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Soi Cầu XSMB - KQXS88 Live",
-    page_icon="🎲",
+    page_title="Super Soi Cầu XSMB - Bộ Đề & Chạy Thông",
+    page_icon="🔥",
     layout="wide"
 )
 
@@ -16,19 +16,46 @@ st.markdown("""
 <style>
     .stDataFrame {font-size: 14px;}
     div[data-testid="stExpander"] {border: 1px solid #e6e6e6; border-radius: 5px;}
+    .success-box {padding: 10px; background-color: #d4edda; color: #155724; border-radius: 5px; margin-bottom: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH & MAPPING
+# 1. CẤU HÌNH, API & MAPPING
 # -----------------------------------------------------------------------------
-API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=5&gameCode=miba"
+API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=10&gameCode=miba"
 
-# Cấu trúc chuẩn XSMB (Tổng 27 giải - 107 ký tự)
 XSMB_STRUCTURE = [
     ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
 ]
+
+# ĐỊNH NGHĨA 15 BỘ ĐỀ CƠ BẢN
+# Key là tên bộ (đại diện), Value là danh sách các số thuộc bộ đó
+BO_DE_DICT = {
+    "00": ["00", "55", "05", "50"],
+    "11": ["11", "66", "16", "61"],
+    "22": ["22", "77", "27", "72"],
+    "33": ["33", "88", "38", "83"],
+    "44": ["44", "99", "49", "94"],
+    "01": ["01", "10", "06", "60", "51", "15", "56", "65"],
+    "02": ["02", "20", "07", "70", "52", "25", "57", "75"],
+    "03": ["03", "30", "08", "80", "53", "35", "58", "85"],
+    "04": ["04", "40", "09", "90", "54", "45", "59", "95"],
+    "12": ["12", "21", "17", "71", "62", "26", "67", "76"],
+    "13": ["13", "31", "18", 81, "63", "36", "68", "86"],
+    "14": ["14", "41", "19", "91", "64", "46", "69", "96"],
+    "23": ["23", "32", "28", "82", "73", "37", "78", "87"],
+    "24": ["24", "42", "29", "92", "74", "47", "79", "97"],
+    "34": ["34", "43", "39", "93", "84", "48", "89", "98"]
+}
+
+# Tạo bảng tra cứu ngược (Số -> Tên bộ) để chạy nhanh hơn
+# Ví dụ: "00": "00", "55": "00", "01": "01", "60": "01"...
+NUMBER_TO_SET_MAP = {}
+for set_name, numbers in BO_DE_DICT.items():
+    for num in numbers:
+        NUMBER_TO_SET_MAP[str(num)] = set_name
 
 # -----------------------------------------------------------------------------
 # 2. HÀM XỬ LÝ DỮ LIỆU (CORE)
@@ -36,50 +63,28 @@ XSMB_STRUCTURE = [
 
 @st.cache_data(ttl=60)
 def fetch_lottery_data():
-    """
-    Gọi API và lấy list từ đường dẫn: root -> t -> issueList
-    """
+    """Lấy dữ liệu từ API, xử lý cấu trúc t -> issueList"""
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         response = requests.get(API_URL, headers=headers, timeout=10)
-        response.raise_for_status()
         data = response.json()
 
-        # --- ĐI THẲNG VÀO CẤU TRÚC JSON CỦA KQXS88 ---
-        if 't' in data and isinstance(data['t'], dict):
-            if 'issueList' in data['t'] and isinstance(data['t']['issueList'], list):
-                return data['t']['issueList']
-
-        st.error(f"Cấu trúc API thay đổi. Không tìm thấy 't' -> 'issueList'. Keys: {list(data.keys())}")
+        if 't' in data and isinstance(data['t'], dict) and 'issueList' in data['t']:
+            return data['t']['issueList']
         return None
-
-    except Exception as e:
-        st.error(f"Lỗi kết nối API: {e}")
+    except Exception:
         return None
 
 def parse_detail_to_107_chars(detail_str):
-    """
-    Chuyển chuỗi detail phức tạp thành chuỗi 107 ký tự liền mạch.
-    Input mẫu: '["46433","89650","21573,12383", ...]'
-    """
+    """Chuyển chuỗi detail JSON thành chuỗi 107 ký tự"""
     try:
         if not detail_str: return ""
-        
-        # 1. Parse chuỗi JSON string thành List Python
-        # Kết quả: ['46433', '89650', '21573,12383', ...]
         raw_groups = json.loads(detail_str)
-        
         full_str = ""
         for group in raw_groups:
-            # 2. Xóa dấu phẩy bên trong từng nhóm giải (Ví dụ giải 3: "21573,12383" -> "2157312383")
-            clean_group = group.replace(",", "").strip()
-            full_str += clean_group
-            
+            full_str += group.replace(",", "").strip()
         return full_str
-    except Exception as e:
-        # st.error(f"Lỗi parse detail: {e}")
+    except:
         return ""
 
 def create_position_map():
@@ -90,156 +95,210 @@ def create_position_map():
                 mapping.append(f"{prize_name}.{c}.{l}")
     return mapping
 
-def analyze_day(record, position_map):
-    """Phân tích 1 ngày xổ số"""
-    if not isinstance(record, dict):
-        return None
-    
-    # Lấy thông tin cơ bản
-    issue = record.get('turnNum', 'Unknown') # Ví dụ: "20/11/2025"
-    detail_raw = record.get('detail', '')
+def get_set_name(number_str):
+    """Lấy tên bộ đề của một số (Ví dụ: '60' -> '01')"""
+    return NUMBER_TO_SET_MAP.get(number_str, "Unknown")
 
-    # --- QUAN TRỌNG: Xử lý chuỗi detail ---
-    full_107_str = parse_detail_to_107_chars(detail_raw)
-    
-    # Kiểm tra độ dài chuẩn XSMB (107 ký tự)
-    if len(full_107_str) != 107:
-        # Nếu không đủ 107 ký tự, bỏ qua (có thể dữ liệu lỗi hoặc chưa quay xong)
-        return None
+def process_days_data(raw_list, num_days):
+    """
+    Xử lý dữ liệu thô của N ngày.
+    Trả về danh sách các object đã parse sẵn (Body, Target, Set ID...).
+    """
+    processed_days = []
+    pos_map = create_position_map()
 
-    # Cắt chuỗi theo yêu cầu
-    special_prize_full = full_107_str[0:5]     # GĐB (5 ký tự đầu)
-    target_tail = special_prize_full[3:5]      # 2 số cuối GĐB (4-5) - MỤC TIÊU
-    body_string = full_107_str[5:]             # 102 ký tự còn lại (G1 -> G7)
-
-    # Thuật toán tìm cặp: Body[i] + Body[j] == Target
-    valid_pairs = []
-    for i in range(len(body_string)):
-        for j in range(len(body_string)):
-            if i == j: continue
-            # So sánh chuỗi ghép
-            if body_string[i] + body_string[j] == target_tail:
-                valid_pairs.append((i, j))
-
-    return {
-        "issue": issue,
-        "gdb": special_prize_full,
-        "target": target_tail,
-        "body": body_string,
-        "pairs": valid_pairs,
-        "pair_set": set(valid_pairs)
-    }
-
-# -----------------------------------------------------------------------------
-# 3. GIAO DIỆN NGƯỜI DÙNG (STREAMLIT UI)
-# -----------------------------------------------------------------------------
-
-def display_day_analysis(day_data, pos_map, label):
-    if not day_data:
-        st.warning(f"{label}: Dữ liệu ngày này bị lỗi hoặc chưa có kết quả.")
-        return
-
-    st.subheader(f"{label} - Ngày: {day_data['issue']}")
-    
-    col1, col2 = st.columns(2)
-    col1.info(f"Đặc Biệt: {day_data['gdb']}")
-    col2.error(f"Mục Tiêu (Tâm Càng): {day_data['target']}")
-
-    # Hiển thị bảng vị trí
-    hit_indices = {idx for pair in day_data['pairs'] for idx in pair}
-    table_data = []
-    body = day_data['body']
-    
-    for i in range(102):
-        is_hit = "✔" if i in hit_indices else ""
-        table_data.append({
-            "Index": i,
-            "Vị trí": pos_map[i],
-            "Số": body[i],
-            "Trúng": is_hit
+    # Duyệt qua N ngày (raw_list[0] là mới nhất)
+    for i in range(min(num_days, len(raw_list))):
+        record = raw_list[i]
+        full_str = parse_detail_to_107_chars(record.get('detail', ''))
+        
+        if len(full_107_str) != 107:
+            continue # Bỏ qua ngày lỗi
+            
+        target = full_str[3:5] # GĐB 4-5
+        body = full_str[5:]
+        
+        processed_days.append({
+            "index": i, # 0 = Mới nhất
+            "issue": record.get('turnNum'),
+            "target": target,
+            "target_set": get_set_name(target),
+            "body": body
         })
-    
-    df = pd.DataFrame(table_data)
-    
-    # Chia 2 cột hiển thị bảng
-    c1, c2 = st.columns(2)
-    with c1:
-        st.dataframe(df.iloc[0:51], use_container_width=True, hide_index=True, height=300)
-    with c2:
-        st.dataframe(df.iloc[51:], use_container_width=True, hide_index=True, height=300)
+        
+    return processed_days, pos_map
 
-    # Expander xem danh sách cặp
-    with st.expander(f"Chi tiết {len(day_data['pairs'])} cặp tạo nên {day_data['target']}"):
-        if day_data['pairs']:
-            # Format chuỗi hiển thị cho gọn
-            text_lines = [f"({i}, {j}) : {pos_map[i]} + {pos_map[j]}" for i, j in day_data['pairs']]
-            st.text("\n".join(text_lines))
-        else:
-            st.text("Không tìm thấy cặp nào.")
+# -----------------------------------------------------------------------------
+# 3. THUẬT TOÁN TÌM CẦU (LOGIC CHÍNH)
+# -----------------------------------------------------------------------------
+
+def find_streak_bridges(days_data, mode="straight"):
+    """
+    Tìm các cặp vị trí chạy thông qua tất cả các ngày trong days_data.
+    
+    Args:
+        days_data: List ngày đã xử lý (0 là mới nhất, 1 là hôm qua...).
+        mode: "straight" (thẳng) hoặc "set" (bộ đề).
+    
+    Returns:
+        List các cặp (i, j) thỏa mãn tất cả các ngày.
+    """
+    if not days_data:
+        return []
+
+    # Bước 1: Tìm tất cả các cặp đúng của NGÀY MỚI NHẤT (Day 0)
+    # Đây là tập ứng viên ban đầu.
+    candidate_pairs = []
+    day0 = days_data[0]
+    body = day0['body']
+    
+    for i in range(len(body)):
+        for j in range(len(body)):
+            if i == j: continue
+            
+            pair_val = body[i] + body[j]
+            
+            is_match = False
+            if mode == "straight":
+                if pair_val == day0['target']: is_match = True
+            else: # mode == "set"
+                if get_set_name(pair_val) == day0['target_set']: is_match = True
+            
+            if is_match:
+                candidate_pairs.append((i, j))
+
+    # Bước 2: Duyệt ngược về các ngày quá khứ (Day 1 -> Day N)
+    # Loại bỏ dần các cặp không đúng.
+    final_pairs = []
+    
+    for (i, j) in candidate_pairs:
+        streak_ok = True
+        
+        # Kiểm tra cặp này ở các ngày cũ hơn
+        for k in range(1, len(days_data)):
+            day_k = days_data[k]
+            body_k = day_k['body']
+            pair_val_k = body_k[i] + body_k[j]
+            
+            if mode == "straight":
+                if pair_val_k != day_k['target']:
+                    streak_ok = False
+                    break
+            else: # mode == "set"
+                # So sánh tên bộ
+                if get_set_name(pair_val_k) != day_k['target_set']:
+                    streak_ok = False
+                    break
+        
+        if streak_ok:
+            final_pairs.append((i, j))
+            
+    return final_pairs
+
+# -----------------------------------------------------------------------------
+# 4. GIAO DIỆN NGƯỜI DÙNG
+# -----------------------------------------------------------------------------
 
 def main():
-    st.title("🔍 XSMB: Phân Tích Cầu Tô Đỏ (API KQXS88)")
+    st.title("🔥 Super Soi Cầu XSMB: Chạy Thông & Bộ Đề")
     
-    if st.button("🚀 Tải & Phân Tích"):
-        with st.spinner("Đang kết nối API & Bóc tách dữ liệu..."):
-            # 1. Lấy dữ liệu
-            raw_list = fetch_lottery_data()
-            pos_map = create_position_map()
-            
-            if raw_list is None:
-                return # Đã báo lỗi trong hàm fetch
-            
-            if len(raw_list) < 2:
-                st.warning("Không đủ 2 ngày dữ liệu để so sánh.")
-                return
+    # --- SIDEBAR CẤU HÌNH ---
+    with st.sidebar:
+        st.header("⚙️ Cấu Hình Soi Cầu")
+        
+        scan_days = st.slider("Số ngày chạy thông (Streak)", min_value=2, max_value=5, value=2, 
+                              help="Tìm cầu đúng liên tiếp trong bao nhiêu ngày gần nhất?")
+        
+        scan_mode = st.radio("Phương pháp soi", ["Soi Thẳng (Bạch thủ)", "Soi Bộ Đề (Bóng/Hệ)"], index=0)
+        
+        mode_key = "straight" if "Thẳng" in scan_mode else "set"
+        
+        st.info("""
+        **Giải thích:**
+        - **Soi Thẳng:** Cặp số cộng lại phải bằng y hệt 2 số cuối GĐB. (Khó, ít cầu nhưng chất).
+        - **Soi Bộ Đề:** Cặp số cộng lại thuộc cùng "Bộ" với GĐB. (Dễ, nhiều cầu, chạy dài hơn).
+        """)
+        
+        if st.button("🚀 QUÉT CẦU NGAY", type="primary"):
+            st.session_state['run_scan'] = True
 
-            # 2. Phân tích 2 ngày gần nhất
-            # raw_list[0]: Mới nhất
-            # raw_list[1]: Hôm qua
-            day1 = analyze_day(raw_list[0], pos_map)
-            day2 = analyze_day(raw_list[1], pos_map)
+    # --- LOGIC HIỂN THỊ ---
+    
+    # Lấy dữ liệu API
+    raw_list = fetch_lottery_data()
+    
+    if not raw_list:
+        st.error("Không kết nối được API. Vui lòng thử lại sau.")
+        return
 
-            if not day1 or not day2:
-                st.error("Lỗi cấu trúc dữ liệu bên trong (Detail string). Vui lòng kiểm tra log.")
-                return
+    # Xử lý dữ liệu đầu vào
+    # Lấy scan_days + 1 để hiển thị, nhưng chỉ soi scan_days
+    processed_days, pos_map = process_days_data(raw_list, scan_days)
+    
+    if len(processed_days) < scan_days:
+        st.warning(f"Dữ liệu API chỉ có {len(processed_days)} ngày, không đủ để soi {scan_days} ngày.")
+        return
 
-            # 3. Hiển thị Tabs
-            tab1, tab2, tab3 = st.tabs(["📅 Mới Nhất", "📅 Hôm Trước", "🔥 CẦU TÔ ĐỎ"])
+    # Hiển thị thông tin các ngày được soi
+    st.subheader(f"📅 Dữ liệu {scan_days} ngày gần nhất")
+    cols = st.columns(scan_days)
+    for idx, day in enumerate(processed_days):
+        with cols[idx]:
+            st.markdown(f"**{day['issue']}**")
+            st.code(f"GĐB: ...{day['target']}", language="text")
+            if mode_key == "set":
+                st.caption(f"Thuộc Bộ: {day['target_set']}")
 
-            with tab1:
-                display_day_analysis(day1, pos_map, "Kỳ Mới Nhất")
+    # Chỉ chạy khi bấm nút
+    if st.session_state.get('run_scan'):
+        with st.spinner(f"Đang quét tất cả các cặp vị trí trong {scan_days} ngày..."):
             
-            with tab2:
-                display_day_analysis(day2, pos_map, "Kỳ Trước Đó")
+            # GỌI HÀM TÌM CẦU
+            winning_pairs = find_streak_bridges(processed_days, mode=mode_key)
             
-            with tab3:
-                st.header("🔥 KẾT QUẢ SO CẦU (TRÙNG 2 NGÀY)")
-                
-                # Tìm giao thoa (Intersection)
-                red_pairs = day1['pair_set'].intersection(day2['pair_set'])
-                
-                st.markdown(f"""
-                - Mục tiêu Ngày 1 ({day1['issue']}): **{day1['target']}**
-                - Mục tiêu Ngày 2 ({day2['issue']}): **{day2['target']}**
-                - Số lượng cặp trùng khớp: **{len(red_pairs)}**
-                """)
-                
-                if red_pairs:
-                    result_rows = []
-                    for (i, j) in red_pairs:
-                        val1 = day1['body'][i] + day1['body'][j]
-                        val2 = day2['body'][i] + day2['body'][j]
-                        
-                        result_rows.append({
-                            "Cặp Index": f"({i}, {j})",
-                            "Tên Vị Trí": f"{pos_map[i]} - {pos_map[j]}",
-                            "Giá trị N1": val1,
-                            "Giá trị N2": val2
-                        })
+            st.divider()
+            st.header(f"💎 KẾT QUẢ: Tìm thấy {len(winning_pairs)} cầu chạy thông {scan_days} ngày")
+            
+            if winning_pairs:
+                # Tạo bảng kết quả chi tiết
+                results_data = []
+                for (i, j) in winning_pairs:
+                    row = {
+                        "Vị trí 1": f"{pos_map[i]} (Idx {i})",
+                        "Vị trí 2": f"{pos_map[j]} (Idx {j})",
+                    }
                     
-                    st.table(pd.DataFrame(result_rows))
-                else:
-                    st.warning("Không tìm thấy cặp nào thông cầu (Cầu gãy).")
+                    # Thêm cột giá trị cho từng ngày
+                    for day in processed_days:
+                        val = day['body'][i] + day['body'][j]
+                        if mode_key == "set":
+                            # Nếu soi bộ, hiển thị: "85 (Bộ 03)"
+                            val_display = f"{val} (Bộ {get_set_name(val)})"
+                        else:
+                            val_display = val
+                            
+                        row[f"Ngày {day['issue']}"] = val_display
+                        
+                    results_data.append(row)
+                
+                st.dataframe(pd.DataFrame(results_data), use_container_width=True)
+                
+                # Hiển thị danh sách gợi ý cho ngày mai (nếu cần)
+                st.success("✅ Các cầu trên đều đã trả kết quả đúng cho các ngày hiển thị. Bạn có thể dùng các vị trí này để dự đoán cho ngày tiếp theo.")
+            else:
+                st.warning(f"Không tìm thấy cầu nào chạy thông {scan_days} ngày với chế độ {scan_mode}. Hãy thử giảm số ngày hoặc chuyển sang 'Soi Bộ Đề'.")
+
+    # --- PHẦN TRA CỨU BỘ ĐỀ (PHỤ TRỢ) ---
+    with st.expander("📖 Tra cứu nhanh các Bộ Đề"):
+        col_a, col_b, col_c = st.columns(3)
+        sets = list(BO_DE_DICT.items())
+        # Chia 3 cột
+        chunk_size = len(sets) // 3 + 1
+        for i, col in enumerate([col_a, col_b, col_c]):
+            sub_sets = sets[i*chunk_size : (i+1)*chunk_size]
+            with col:
+                for name, nums in sub_sets:
+                    st.text(f"Bộ {name}: {', '.join(map(str, nums))}")
 
 if __name__ == "__main__":
     main()
