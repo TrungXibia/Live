@@ -273,4 +273,36 @@ def main():
                          "Độ Dài Cầu": f"{r['streak']} ngày 🔥",
                          "Dữ liệu giải": r['val']
                     })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            else:
+                st.warning("Không tìm thấy giải nào ăn thông trên 2 ngày.")
+
+        # 3. 3 CÀNG
+        elif "3 Càng" in method:
+            c_col, d_col = st.columns(2)
+            
+            # Càng
+            tc = auto_scan_tam_cang(data)
+            with c_col:
+                st.info(f"🅰️ Xếp hạng Tâm Càng")
+                if tc:
+                    rows = [{"Hạng": f"#{i+1}", "Vị trí": pos_map[r['idx']], "Thông": f"{r['streak']} ngày"} for i, r in enumerate(tc)]
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
+            # Đề
+            de = auto_scan_positions(data, mode, allow_rev)
+            with d_col:
+                st.success(f"🅱️ Xếp hạng Cầu Đề")
+                if de:
+                    rows = []
+                    for i, r in enumerate(de[:30]):
+                         val = data[0]['body'][r['i']] + data[0]['body'][r['j']]
+                         rows.append({"Hạng": f"#{i+1}", "V1": pos_map[r['i']], "V2": pos_map[r['j']], "Thông": f"{r['streak']} ngày", "Báo": val})
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            
+            if tc and de:
+                st.divider()
+                st.success(f"💎 TOP 1 HÔM NAY: Càng {data[0]['body'][tc[0]['idx']]} + Đề {data[0]['body'][de[0]['i']] + data[0]['body'][de[0]['j']]}")
+
+if __name__ == "__main__":
+    main()
