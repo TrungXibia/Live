@@ -1,107 +1,79 @@
-import requests
-from bs4 import BeautifulSoup
-import time
+import easyocr
+import numpy as np
+from PIL import Image
+import cv2
 
-# Cấu trúc chuẩn XSMB để mapping
-XSMB_STRUCTURE = [
-    ("GĐB", 1, 5), ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
-    ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
-]
+# Khởi tạo Reader 1 lần để dùng chung (cache vào Ram)
+# Chỉ đọc số (allowlist) để tăng tốc và độ chính xác
+reader = easyocr.Reader(['en'], gpu=False) 
 
-def get_live_xsmb_minhngoc():
+def extract_numbers_from_image(image_file):
     """
-    Truy cập minhngoc.net.vn lấy dữ liệu trực tiếp.
-    Trả về: (full_string_107_chars, filled_length)
+    Đọc ảnh, trả về chuỗi 107 ký tự chuẩn XSMB.
+    Input: File ảnh upload từ Streamlit.
+    Output: (full_str_107, list_of_numbers_found)
     """
-    url = "https://www.minhngoc.net.vn/xo-so-truc-tiep/mien-bac.html"
-    
-    # Headers giả lập Chrome Windows mới nhất để tránh bị chặn
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-    }
-
     try:
-        # Thêm tham số t để tránh cache phía server/proxy
-        response = requests.get(f"{url}?t={int(time.time())}", headers=headers, timeout=8)
+        # 1. Chuyển ảnh upload thành format OpenCV
+        image = Image.open(image_file)
+        image_np = np.array(image)
         
-        if response.status_code != 200:
-            return None, f"HTTP Error {response.status_code}"
-
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # 2. Xử lý ảnh (Grayscale) để OCR tốt hơn
+        gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
         
-        # 1. Tìm bảng kết quả
-        # Minh Ngọc thường dùng id="noidung" -> div.box_kqxs
-        box = soup.find('div', class_='box_kqxs')
-        if not box:
-            return None, "Không tìm thấy bảng kết quả (HTML thay đổi?)"
-
-        # 2. Bóc tách từng giải
-        prizes_data = {}
+        # 3. Đọc text (Chỉ chấp nhận số)
+        # allowlist='0123456789' giúp loại bỏ chữ cái rác
+        results = reader.readtext(gray, allowlist='0123456789', detail=0)
         
-        # Map tên class trong HTML của Minh Ngọc
-        class_map = {
-            "GĐB": "giaiDb", # Lưu ý: chữ D viết hoa
-            "G1": "giai1", "G2": "giai2", "G3": "giai3",
-            "G4": "giai4", "G5": "giai5", "G6": "giai6", "G7": "giai7"
-        }
+        # 4. Lọc rác: Chỉ lấy các số có độ dài hợp lệ (2 đến 5 chữ số)
+        # XSMB có các giải: 5 số, 4 số, 3 số, 2 số.
+        clean_nums = []
+        for text in results:
+            text = text.strip()
+            # Loại bỏ các số quá ngắn (ví dụ số thứ tự 1, 2, 3...) hoặc quá dài
+            if text.isdigit() and 2 <= len(text) <= 5:
+                clean_nums.append(text)
         
-        for my_name, mn_class in class_map.items():
-            # Tìm ô chứa giải (td)
-            cell = box.find('td', class_=mn_class)
-            nums = []
-            
-            if cell:
-                # Giải nhiều số (G3, G4...) thường nằm trong thẻ <div> con
-                divs = cell.find_all('div')
-                if divs:
-                    nums = [d.text.strip() for d in divs]
-                else:
-                    # Giải ít số (GĐB, G1) nằm trực tiếp trong <td>
-                    text = cell.text.strip()
-                    if text: nums = [text]
-            
-            # Lọc sạch chỉ lấy số
-            clean_nums = []
-            for n in nums:
-                # Chỉ giữ lại ký tự số
-                digits = "".join(filter(str.isdigit, n))
-                if digits: clean_nums.append(digits)
-                
-            prizes_data[my_name] = clean_nums
-
-        # 3. Ghép chuỗi 107 ký tự (Quan trọng nhất)
-        full_str = ""
+        # 5. Sắp xếp và ghép vào cấu trúc XSMB
+        # Tổng cộng XSMB có 27 giải.
+        # Thứ tự đọc của EasyOCR thường là từ Trái qua Phải, Trên xuống Dưới.
+        # Bảng KQXS thường xếp: GĐB -> G1 -> G2 ... -> G7
         
-        for p_name, count, length in XSMB_STRUCTURE:
-            current_nums = prizes_data.get(p_name, [])
-            
-            for i in range(count):
-                if i < len(current_nums):
-                    val = current_nums[i]
-                    # Nếu số đang quay dở (chưa đủ ký tự), điền thêm '?' vào đuôi
-                    # Ví dụ: Đang quay '12' cho giải 3 chữ số -> '12?'
-                    if len(val) < length:
-                        full_str += val.ljust(length, '?')
-                    else:
-                        full_str += val[:length] # Cắt đúng độ dài nếu thừa
-                else:
-                    # Chưa quay đến
-                    full_str += "?" * length
-
-        # Tính số lượng ký tự đã quay xong
-        filled_len = 107 - full_str.count('?')
-        
-        return full_str, filled_len
+        # Nếu đọc thiếu hoặc thừa, ta trả về list để user sửa tay
+        return clean_nums
 
     except Exception as e:
-        return None, str(e)
+        return [f"Error: {str(e)}"]
 
-# Test chạy thử khi gọi trực tiếp file này
-if __name__ == "__main__":
-    s, l = get_live_xsmb_minhngoc()
-    print(f"Độ dài: {l}/107")
-    print(f"Chuỗi: {s}")
+def map_numbers_to_107_str(numbers_list):
+    """
+    Ghép danh sách số thô thành chuỗi 107 ký tự.
+    Cần đúng 27 số theo thứ tự: 1 ĐB, 1 G1, 2 G2, 6 G3, 4 G4, 6 G5, 3 G6, 4 G7
+    """
+    # Cấu trúc số lượng giải
+    structure = [1, 1, 2, 6, 4, 6, 3, 4] # Tổng 27 giải
+    lengths   = [5, 5, 5, 5, 4, 4, 3, 2] # Độ dài từng giải
+    
+    full_str = ""
+    current_idx = 0
+    
+    # Nếu không đủ 27 số, điền ? vào chỗ thiếu
+    # Nếu thừa, cắt bớt
+    
+    for count, length in zip(structure, lengths):
+        for _ in range(count):
+            if current_idx < len(numbers_list):
+                val = numbers_list[current_idx]
+                # Kiểm tra độ dài, nếu sai thì fill ? (hoặc giữ nguyên nếu user chấp nhận rủi ro)
+                if len(val) == length:
+                    full_str += val
+                else:
+                    # Cố gắng fix: nếu dài hơn thì cắt, ngắn hơn thì pad ?
+                    # Nhưng an toàn nhất là ghép vào, thuật toán soi cầu sẽ tự xử lý
+                    if len(val) > length: full_str += val[-length:] # Lấy đuôi
+                    else: full_str += val.rjust(length, '?') 
+            else:
+                full_str += "?" * length
+            current_idx += 1
+            
+    return full_str
