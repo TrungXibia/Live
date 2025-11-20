@@ -101,20 +101,14 @@ def parse_smart_text(text, has_gdb_checkbox):
     text = text.lower() # Chuẩn hóa về chữ thường
     
     # 1. Tạo các thùng chứa (Buckets) cho từng giải
-    # Key: Tên định danh, Value: Chuỗi số tìm được
     buckets = {
         'db': '', '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '7': ''
     }
     
-    # Xác định giải đang xét hiện tại (Context)
     current_bucket = None
-    
-    # Nếu người dùng bảo KHÔNG có GĐB, mặc định bắt đầu tìm từ G1, GĐB bỏ qua
-    # Tuy nhiên, logic tốt nhất là quét từng dòng để tìm từ khóa
     
     lines = text.split('\n')
     for line in lines:
-        # Chuẩn hóa dòng
         line_clean = line.strip()
         
         # --- NHẬN DIỆN TÊN GIẢI ---
@@ -167,33 +161,32 @@ def parse_smart_text(text, has_gdb_checkbox):
             preview_list.append(f"GĐB: (Bỏ qua)")
             continue
             
-        # Tách chuỗi dính liền (VD: G2 có 2 giải, mỗi giải 5 số -> Cần 10 số)
-        expected_total_len = count * length
-        
         # Lấy đoạn chuỗi tương ứng
         current_segment = ""
         display_segment = []
+        current_pos = 0
         
         for i in range(count):
-            # Vị trí cắt
-            start = i * length
+            # Cắt chuỗi dính liền
+            start = current_pos
             end = start + length
             
-            val = "?" * length # Mặc định là chưa có
+            val = "?" * length
             
             if end <= len(raw_str):
                 val = raw_str[start:end]
+                current_pos += length
             elif start < len(raw_str):
-                # Có số nhưng không đủ độ dài (đang quay dở)
+                # Có số nhưng thiếu
                 partial = raw_str[start:]
                 val = partial.ljust(length, '?')
+                current_pos += len(partial)
             
             current_segment += val
             display_segment.append(val)
             
         full_str += current_segment
         
-        # Tạo text hiển thị
         status = "✅" if '?' not in current_segment else "⏳"
         preview_list.append(f"G{key if key != 'db' else 'ĐB'} ({status}): {', '.join(display_segment)}")
         
@@ -254,36 +247,4 @@ def auto_scan_prizes(data, mode):
 # 6. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("📋 Soi Cầu: Copy & Paste (Thông Minh)")
-    
-    if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
-    if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
-    if 'pos_map' not in st.session_state: st.session_state['pos_map'] = get_pos_map()
-
-    # --- BƯỚC 1: QUÉT LỊCH SỬ ---
-    c1, c2, c3 = st.columns(3)
-    with c1: method = st.selectbox("Phương Pháp", ["1. Cầu Vị Trí", "2. Cầu Giải"])
-    with c2: is_set = st.checkbox("Soi Bộ", False); mode = "set" if is_set else "straight"
-    with c3: allow_rev = st.checkbox("Đảo AB", True) if not is_set and "Vị Trí" in method else True
-    
-    raw = fetch_history()
-    data = process_data(raw)
-    
-    if not st.session_state['saved_bridges'] and not st.session_state['saved_prizes']:
-        with st.spinner("Đang học cầu từ quá khứ..."):
-            if "Vị Trí" in method: st.session_state['saved_bridges'] = auto_scan_positions(data, mode, allow_rev)[:50]
-            if "Cầu Giải" in method: st.session_state['saved_prizes'] = auto_scan_prizes(data, mode)
-        st.toast("Đã quét xong lịch sử!")
-
-    st.divider()
-
-    # --- BƯỚC 2: DÁN DỮ LIỆU ---
-    st.subheader("📝 Dán kết quả (Minh Ngọc / Đại Phát)")
-    
-    col_opt, col_area = st.columns([1, 3])
-    with col_opt:
-        has_gdb = st.checkbox("Có GĐB trong văn bản?", value=True, help="Bỏ tích nếu bạn chỉ copy từ Giải Nhất trở đi")
-        if st.button("🧹 Xóa & Dán lại"): st.rerun()
-            
-    with col_area:
-        raw_text = st.text_area("Dán vào đây (Cả chữ và số đều được):", he
+    st.title("📋 Soi Cầu: Copy & Paste (Th
