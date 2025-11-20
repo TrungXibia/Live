@@ -7,7 +7,7 @@ import json
 # CẤU HÌNH TRANG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Soi Cầu Pro: Nhị Hợp Ghép Trong",
+    page_title="Soi Cầu Pro: Nhị Hợp & Dàn Đề",
     page_icon="🎲",
     layout="wide"
 )
@@ -15,21 +15,18 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stDataFrame {font-size: 14px;}
-    div[data-testid="stExpander"] {border: 1px solid #e6e6e6; border-radius: 5px;}
+    /* Thu gọn bảng lịch sử */
+    .compact-table {margin-bottom: 0px;}
     div.stButton > button {width: 100%; height: 3em; font-weight: bold;}
-    .badge {
-        background-color: #28a745; color: white; padding: 2px 8px; 
-        border-radius: 4px; font-weight: bold;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # 1. DỮ LIỆU & CẤU TRÚC
 # -----------------------------------------------------------------------------
-API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=20&gameCode=miba"
+API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=30&gameCode=miba"
 
-# Cấu trúc giải để cắt chuỗi (Tên, Số lượng, Độ dài)
+# Cấu trúc giải (Tên, Số lượng, Độ dài)
 XSMB_STRUCTURE = [
     ("GĐB", 1, 5), ("G1", 1, 5), ("G2", 2, 5), ("G3", 6, 5),
     ("G4", 4, 4), ("G5", 6, 4), ("G6", 3, 3), ("G7", 4, 2)
@@ -52,7 +49,7 @@ BO_DE_DICT = {
 NUMBER_TO_SET_MAP = {str(n): s for s, nums in BO_DE_DICT.items() for n in nums}
 
 # -----------------------------------------------------------------------------
-# 2. HÀM XỬ LÝ
+# 2. HÀM XỬ LÝ DATA
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_lottery_data():
@@ -71,22 +68,21 @@ def get_set_name(n): return NUMBER_TO_SET_MAP.get(str(n), "?")
 
 def get_prize_map_indices():
     """
-    Tạo map vị trí cắt chuỗi cho từng giải.
-    Trả về: {'G1': (5, 10), 'G2.1': (10, 15)...}
+    Map vị trí cắt chuỗi cho từng giải.
+    Bỏ qua GĐB vì yêu cầu không xét GĐB.
     """
     mapping = {}
     current = 0
-    # Lưu ý: XSMB 107 ký tự thực tế bắt đầu từ GĐB (5 số) -> G1 -> ...
-    # Nhưng hàm parse của chúng ta trả về full chuỗi bao gồm cả GĐB ở đầu.
-    
-    # Cấu trúc API trả về thường là GĐB trước rồi đến các giải khác.
-    # Ta cần map đúng thứ tự chuỗi 107 ký tự.
-    # GĐB (5) -> G1 (5) -> G2 (10) -> ...
-    
     for p_name, count, length in XSMB_STRUCTURE:
         for i in range(1, count + 1):
-            key = f"{p_name}" if count == 1 else f"{p_name}.{i}"
-            mapping[key] = (current, current + length)
+            # Tính toán vị trí start:end
+            start, end = current, current + length
+            
+            # Chỉ thêm vào map nếu KHÔNG PHẢI LÀ GĐB
+            if p_name != "GĐB":
+                key = f"{p_name}" if count == 1 else f"{p_name}.{i}"
+                mapping[key] = (start, end)
+            
             current += length
     return mapping
 
@@ -105,73 +101,76 @@ def process_days_data(raw_list):
             "issue": record.get('turnNum'),
             "de": de,
             "de_set": get_set_name(de),
-            "body": full # Chuỗi 107 ký tự
+            "body": full
         })
     return processed_days
 
 # -----------------------------------------------------------------------------
-# 3. LOGIC TÌM CẦU "NHỊ HỢP GHÉP TRONG"
+# 3. LOGIC TÌM CẦU NHỊ HỢP (GHÉP TRONG GIẢI)
 # -----------------------------------------------------------------------------
 
-def check_containment(prize_str, target_de, mode="straight"):
+def check_containment_25_pairs(prize_str, target_de, mode="straight"):
     """
-    Kiểm tra xem target_de có được tạo thành từ các chữ số của prize_str không.
+    Kiểm tra xem target_de có nằm trong dàn 25 số tạo ra từ prize_str không.
+    Ghép thành 25 số tức là mọi chữ số ghép với mọi chữ số (bao gồm cả chính nó).
+    -> Điều kiện: Chỉ cần Cả 2 chữ số của Đề đều xuất hiện trong prize_str là Đủ.
     """
-    # Tách giải thành list các chữ số. VD: "12345" -> ['1','2','3','4','5']
-    digits = list(prize_str)
+    digits_in_prize = set(prize_str) # Tập hợp các chữ số có trong giải
     
     if mode == "straight":
-        # Cần tạo ra chính xác con đề (VD: 38)
         d1, d2 = target_de[0], target_de[1]
-        # Logic: d1 phải có trong prize VÀ d2 phải có trong prize
-        return (d1 in digits) and (d2 in digits)
+        # Ví dụ: Đề 38. Prize 12385. -> Có 3, Có 8 -> True
+        # Ví dụ: Đề 33. Prize 12345. -> Có 3 -> True (vì ghép 3 với 3 được)
+        return (d1 in digits_in_prize) and (d2 in digits_in_prize)
         
     else: # mode == "set" (Bộ)
-        # Lấy danh sách các số trong bộ đề (VD: Bộ 03 gồm 03,30,08,80...)
+        # Lấy tất cả các số trong bộ
         set_name = get_set_name(target_de)
         numbers_in_set = BO_DE_DICT.get(set_name, [])
         
-        # Nếu BẤT KỲ số nào trong bộ có thể ghép được từ prize -> True
+        # Nếu tạo được BẤT KỲ số nào trong bộ -> True
         for num in numbers_in_set:
             d1, d2 = num[0], num[1]
-            if (d1 in digits) and (d2 in digits):
+            if (d1 in digits_in_prize) and (d2 in digits_in_prize):
                 return True
         return False
 
-def find_nhi_hop_containment(days_data, mode="straight", min_streak=2):
+def find_nhi_hop_streak(days_data, mode="straight"):
     """
-    Quét tất cả các giải, tìm giải nào ghép ra đề liên tiếp N ngày.
+    Quét tất cả các giải (trừ GĐB), tìm xem giải nào "chứa" đề liên tiếp.
     """
     prize_map = get_prize_map_indices()
     results = []
     
+    # Duyệt từng giải: G1, G2.1, G2.2 ...
     for prize_name, (start, end) in prize_map.items():
         streak = 0
         
-        # Duyệt từ ngày mới nhất (0) về quá khứ
+        # Duyệt ngược quá khứ (từ ngày 0 trở về trước)
         for i in range(len(days_data)):
             day = days_data[i]
             prize_str = day['body'][start:end]
             
-            is_hit = check_containment(prize_str, day['de'], mode)
-            
-            if is_hit:
+            # Kiểm tra xem Giải này có tạo ra Đề ngày hôm đó không
+            if check_containment_25_pairs(prize_str, day['de'], mode):
                 streak += 1
             else:
-                break # Đứt cầu
+                break # Gãy cầu -> dừng
         
-        if streak >= min_streak:
-            # Lấy thông tin ngày hôm nay để hiển thị
+        # Chỉ lấy cầu nào đang chạy (Streak >= 2 ngày cho uy tín)
+        if streak >= 2:
+            # Lấy dữ liệu ngày hôm nay để báo cáo
             today = days_data[0]
-            today_prize = today['body'][start:end]
+            today_prize_str = today['body'][start:end]
+            
             results.append({
                 "Giải": prize_name,
                 "Streak": streak,
-                "Dữ liệu hôm nay": today_prize,
-                "Đề về": today['de']
+                "Dữ liệu hôm nay": today_prize_str,
+                "Đề về hôm nay": today['de'] # Để đối chiếu
             })
             
-    # Sắp xếp streak giảm dần
+    # Sắp xếp: Cầu dài nhất lên đầu
     results.sort(key=lambda x: x['Streak'], reverse=True)
     return results
 
@@ -180,25 +179,22 @@ def find_nhi_hop_containment(days_data, mode="straight", min_streak=2):
 # -----------------------------------------------------------------------------
 
 def main():
-    st.title("🔥 Soi Cầu: Nhị Hợp (Ghép Trong Giải)")
+    st.title("🔥 Soi Cầu Pro: Nhị Hợp (Ghép Trong)")
     
-    # --- MENU TRÊN CÙNG ---
+    # --- MENU CẤU HÌNH ---
     with st.container():
-        c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
+        c1, c2, c3 = st.columns([2, 1.5, 1.5])
         
         with c1:
-            scan_type = st.selectbox("Chế độ", ["Nhị Hợp (Ghép trong giải)", "Cầu Đề (Vị trí)"])
+            st.write("**Chế độ mặc định:** Nhị Hợp (Ghép trong giải)")
+            st.caption("Tự động loại bỏ GĐB. Xét G1 -> G7.")
             
         with c2:
-            min_strk = st.number_input("Min Streak", 2, 10, 3)
-            
-        with c3:
-            is_set = st.checkbox("Soi theo Bộ", value=False, help="Mở rộng ra cả bộ đề")
+            is_set = st.checkbox("Soi theo Bộ Đề", value=False, help="Mở rộng điều kiện trúng")
             mode = "set" if is_set else "straight"
             
-        with c4:
-            st.write("")
-            btn = st.button("🚀 QUÉT NGAY", type="primary")
+        with c3:
+            btn = st.button("🚀 QUÉT CẦU", type="primary")
 
     st.divider()
     
@@ -207,42 +203,61 @@ def main():
     if not raw: st.error("Lỗi API"); return
     days = process_days_data(raw)
     
-    # --- HIỂN THỊ KQ GẦN ĐÂY ---
+    # --- 1. HIỂN THỊ LỊCH SỬ 5 NGÀY (THU GỌN 1 DÒNG) ---
     st.subheader("📅 Kết quả 5 ngày gần nhất")
-    cols = st.columns(5)
-    for i in range(min(5, len(days))):
-        with cols[i]:
-            st.info(f"{days[i]['issue']}")
-            st.markdown(f"Đề: **{days[i]['de']}**")
-            st.caption(f"Bộ: {days[i]['de_set']}")
+    
+    if len(days) >= 5:
+        # Tạo DataFrame ngang
+        history_data = []
+        for i in range(5):
+            d = days[i]
+            history_data.append({
+                "Ngày": d['issue'],
+                "Đề": d['de'],
+                "Bộ": d['de_set']
+            })
+        
+        # Chuyển vị (Transpose) để hiện thành 1 bảng ngang gọn
+        df_hist = pd.DataFrame(history_data)
+        # Dùng st.dataframe với chiều cao thấp
+        st.dataframe(df_hist.T, use_container_width=True)
+    else:
+        st.warning("Chưa đủ dữ liệu 5 ngày.")
 
-    # --- XỬ LÝ ---
+    # --- 2. XỬ LÝ QUÉT ---
     if btn:
         st.write("---")
+        st.subheader(f"🔎 DANH SÁCH CẦU NHỊ HỢP ĐANG CHẠY ({mode.upper()})")
+        st.markdown("""
+        *Quy tắc: Lấy các chữ số trong giải ghép vòng tròn (Nhị hợp). Nếu trong dàn số tạo ra có chứa số Đề -> Cầu chạy.*
+        """)
         
-        if "Nhị Hợp" in scan_type:
-            st.subheader(f"🔎 KẾT QUẢ NHỊ HỢP ({mode.upper()})")
-            st.markdown("""
-            **Cách hiểu:** Ví dụ Giải 1 là `12345`.
-            - Nếu đề về `15` -> **Ăn** (vì có số 1 và 5).
-            - Nếu đề về `33` -> **Ăn** (vì có số 3, chấp nhận ghép trùng).
-            - Bảng dưới liệt kê các giải đã "ăn" liên tiếp nhiều ngày.
-            """)
+        with st.spinner("Đang phân tích các giải..."):
+            res = find_nhi_hop_streak(days, mode=mode)
             
-            with st.spinner("Đang phân tích từng giải..."):
-                res = find_nhi_hop_containment(days, mode=mode, min_streak=min_strk)
+        if res:
+            # Hiển thị bảng kết quả
+            final_data = []
+            for item in res:
+                # Tạo dàn số minh họa cho ngày hôm nay (Optional, để user dễ hiểu)
+                # Nhưng user yêu cầu "xét xem đề có trong đó k thì báo có"
+                # Ta hiển thị trạng thái "OK"
                 
-            if res:
-                # Format lại cho đẹp
-                df = pd.DataFrame(res)
-                # Thêm icon lửa vào streak
-                df['Streak'] = df['Streak'].apply(lambda x: f"{x} ngày 🔥")
-                st.dataframe(df, use_container_width=True)
-            else:
-                st.warning(f"Không có giải nào ghép ra đề thông {min_strk} ngày cả.")
-                
+                final_data.append({
+                    "Tên Giải": item['Giải'],
+                    "Số ngày thông": f"{item['Streak']} ngày 🔥",
+                    "Số liệu hôm nay": item['Dữ liệu hôm nay'],
+                    "Ghép ra Đề?": f"Chứa {item['Đề về hôm nay']} ✅" 
+                })
+            
+            st.dataframe(pd.DataFrame(final_data), use_container_width=True)
+            
+            # Gợi ý top 1
+            top1 = res[0]
+            st.success(f"💡 Cầu đẹp nhất: **{top1['Giải']}** đang chạy thông **{top1['Streak']} ngày**. Hãy chú ý giải này vào ngày mai!")
+            
         else:
-            st.info("Vui lòng chọn chế độ 'Nhị Hợp' để trải nghiệm tính năng mới này.")
+            st.warning("Hiện tại không có giải nào (G1-G7) chứa đề thông 2 ngày trở lên.")
 
 if __name__ == "__main__":
     main()
