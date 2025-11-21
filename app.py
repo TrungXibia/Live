@@ -7,7 +7,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CẤU HÌNH & CSS (ĐÃ CHỈNH SIÊU NHỎ GỌN)
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Siêu Gà Súp pờ Soi", page_icon="📊", layout="wide")
+st.set_page_config(page_title="SIêu Gà Súp pờ soi", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -585,122 +585,127 @@ def main():
         elif "Cầu Giải" in method:
             pmap = get_prize_map_no_gdb()
             
-            # Thu thập tất cả digits từ VIP và 1 Day
-            all_prize_digits = []
+            from collections import Counter
             
             # VIP
-            found_vip = False
-            st.write("🔥 Giải VIP:")
-            for p in vip_prizes:
-                pname = p['prize']; s, e = pmap.get(pname)
-                # Nếu cross_day -> Dự đoán dựa trên ngày mới nhất (data[0])
-                # Nếu same_day -> Dự đoán dựa trên live_str_107 (đang nhập)
+            if vip_prizes:
+                st.write("🔥 **Giải VIP:**")
+                vip_table_data = []
                 
-                src_body = live_str_107
-                if bridge_type == "cross_day": src_body = data[0]['body']
+                for p in vip_prizes:
+                    pname = p['prize']; s, e = pmap.get(pname)
+                    
+                    src_body = live_str_107
+                    if bridge_type == "cross_day": src_body = data[0]['body']
+                    
+                    if e <= len(src_body) and '?' not in src_body[s:e]:
+                        digits = src_body[s:e]
+                        
+                        # Tính nhị hợp hoặc bộ đào
+                        if mode == "set":
+                            # Tìm tất cả bộ có thể tạo từ digits
+                            bo_sets = []
+                            for i in range(len(digits)):
+                                for j in range(len(digits)):
+                                    if i != j:
+                                        pair = digits[i] + digits[j]
+                                        bo_set = get_set(pair)
+                                        if bo_set != "?":
+                                            bo_sets.append(bo_set)
+                            
+                            # Đếm tần suất
+                            bo_counter = Counter(bo_sets)
+                            freq_display = ", ".join([f"{bo}({count})" for bo, count in bo_counter.most_common()])
+                            
+                            vip_table_data.append({
+                                "Giải": pname,
+                                "Thông": f"{p['streak']}n",
+                                "Số gốc": digits,
+                                "Bộ Đào (Tần suất)": freq_display
+                            })
+                        else:
+                            # Tìm tất cả cặp 2 số (nhị hợp)
+                            pairs = []
+                            for i in range(len(digits)):
+                                for j in range(len(digits)):
+                                    pair = digits[i] + digits[j]
+                                    pairs.append(pair)
+                            
+                            # Đếm tần suất
+                            pair_counter = Counter(pairs)
+                            freq_display = ", ".join([f"{num}({count})" for num, count in pair_counter.most_common()])
+                            
+                            vip_table_data.append({
+                                "Giải": pname,
+                                "Thông": f"{p['streak']}n",
+                                "Số gốc": digits,
+                                "Nhị Hợp (Tần suất)": freq_display
+                            })
                 
-                if e <= len(src_body) and '?' not in src_body[s:e]:
-                    digits = src_body[s:e]
-                    st.success(f"{pname} ({p['streak']}n): {digits}")
-                    all_prize_digits.append(digits)
-                    found_vip = True
-            if not found_vip: st.caption("...")
+                if vip_table_data:
+                    st.dataframe(pd.DataFrame(vip_table_data), use_container_width=True)
+                else:
+                    st.caption("Chưa đủ dữ liệu...")
             
             # 1 DAY
-            st.write("✅ Giải 1 Ngày:")
-            for p in oneday_prizes:
-                pname = p['prize']; s, e = pmap.get(pname)
+            if oneday_prizes:
+                st.write("✅ **Giải 1 Ngày:**")
+                oneday_table_data = []
                 
-                src_body = live_str_107
-                if bridge_type == "cross_day": src_body = data[0]['body']
+                for p in oneday_prizes:
+                    pname = p['prize']; s, e = pmap.get(pname)
+                    
+                    src_body = live_str_107
+                    if bridge_type == "cross_day": src_body = data[0]['body']
 
-                if e <= len(src_body) and '?' not in src_body[s:e]:
-                    digits = src_body[s:e]
-                    st.info(f"{pname}: {digits}")
-                    all_prize_digits.append(digits)
-            
-            # Nếu có dữ liệu -> Tạo nhị hợp hoặc bộ đào
-            if all_prize_digits:
-                st.markdown("---")
-                
-                if mode == "set":
-                    st.write("**🎲 BỘ ĐÀO TỰ ĐỘNG (Set Mode):**")
-                    
-                    from collections import Counter
-                    
-                    # Tìm tất cả các bộ từ các digits
-                    all_sets = []
-                    all_numbers = set()
-                    
-                    for digits in all_prize_digits:
-                        # Tìm tất cả cặp 2 số có thể tạo từ digits này
-                        for i in range(len(digits)):
-                            for j in range(len(digits)):
-                                if i != j:
+                    if e <= len(src_body) and '?' not in src_body[s:e]:
+                        digits = src_body[s:e]
+                        
+                        # Tính nhị hợp hoặc bộ đào
+                        if mode == "set":
+                            # Tìm tất cả bộ có thể tạo từ digits
+                            bo_sets = []
+                            for i in range(len(digits)):
+                                for j in range(len(digits)):
+                                    if i != j:
+                                        pair = digits[i] + digits[j]
+                                        bo_set = get_set(pair)
+                                        if bo_set != "?":
+                                            bo_sets.append(bo_set)
+                            
+                            # Đếm tần suất
+                            bo_counter = Counter(bo_sets)
+                            freq_display = ", ".join([f"{bo}({count})" for bo, count in bo_counter.most_common()])
+                            
+                            oneday_table_data.append({
+                                "Giải": pname,
+                                "Thông": f"{p['streak']}n",
+                                "Số gốc": digits,
+                                "Bộ Đào (Tần suất)": freq_display
+                            })
+                        else:
+                            # Tìm tất cả cặp 2 số (nhị hợp)
+                            pairs = []
+                            for i in range(len(digits)):
+                                for j in range(len(digits)):
                                     pair = digits[i] + digits[j]
-                                    bo_set = get_set(pair)
-                                    if bo_set != "?":
-                                        all_sets.append(bo_set)
-                                        # Thêm tất cả số trong bộ này
-                                        if bo_set in BO_DE_DICT:
-                                            all_numbers.update(BO_DE_DICT[bo_set])
-                    
-                    # Đếm tần suất
-                    set_counter = Counter(all_sets)
-                    
-                    # Hiển thị tần suất bộ (nhiều -> ít)
-                    if set_counter:
-                        st.write("📊 **Tần suất các Bộ (Nhiều → Ít):**")
-                        freq_items = set_counter.most_common()
-                        freq_display = ", ".join([f"{bo}({count})" for bo, count in freq_items])
-                        st.info(freq_display)
-                        
-                        # Hiển thị danh sách bộ và số
-                        sorted_sets = sorted(list(set(all_sets)))
-                        sorted_numbers = sorted(list(all_numbers))
-                        
-                        st.write(f"**Tổng {len(sorted_sets)} Bộ:**")
-                        st.code(", ".join(sorted_sets), language='text')
-                        
-                        st.write(f"**Tổng {len(sorted_numbers)} Số:**")
-                        # Hiển thị số theo dòng 15 số
-                        chunk_size = 15
-                        chunks = [sorted_numbers[i:i+chunk_size] for i in range(0, len(sorted_numbers), chunk_size)]
-                        rows = [", ".join(c) for c in chunks]
-                        st.code(",\n".join(rows), language='text')
+                                    pairs.append(pair)
+                            
+                            # Đếm tần suất
+                            pair_counter = Counter(pairs)
+                            freq_display = ", ".join([f"{num}({count})" for num, count in pair_counter.most_common()])
+                            
+                            oneday_table_data.append({
+                                "Giải": pname,
+                                "Thông": f"{p['streak']}n",
+                                "Số gốc": digits,
+                                "Nhị Hợp (Tần suất)": freq_display
+                            })
+                
+                if oneday_table_data:
+                    st.dataframe(pd.DataFrame(oneday_table_data), use_container_width=True)
                 else:
-                    # Mode straight -> Tạo nhị hợp (kể cả kép)
-                    st.write("**🎲 NHỊ HỢP TỰ ĐỘNG (Straight Mode):**")
-                    
-                    from collections import Counter
-                    
-                    all_pairs = []
-                    
-                    for digits in all_prize_digits:
-                        # Tìm tất cả cặp 2 số có thể tạo từ digits này (kể cả kép)
-                        for i in range(len(digits)):
-                            for j in range(len(digits)):
-                                pair = digits[i] + digits[j]
-                                all_pairs.append(pair)
-                    
-                    # Đếm tần suất
-                    pair_counter = Counter(all_pairs)
-                    
-                    if pair_counter:
-                        st.write("📊 **Tần suất các Số (Nhiều → Ít):**")
-                        freq_items = pair_counter.most_common()
-                        freq_display = ", ".join([f"{num}({count})" for num, count in freq_items])
-                        st.info(freq_display)
-                        
-                        # Hiển thị danh sách số
-                        sorted_pairs = sorted(list(set(all_pairs)))
-                        
-                        st.write(f"**Tổng {len(sorted_pairs)} Số:**")
-                        # Hiển thị số theo dòng 15 số
-                        chunk_size = 15
-                        chunks = [sorted_pairs[i:i+chunk_size] for i in range(0, len(sorted_pairs), chunk_size)]
-                        rows = [", ".join(c) for c in chunks]
-                        st.code(",\n".join(rows), language='text')
+                    st.caption("Chưa đủ dữ liệu...")
 
 
 
