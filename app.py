@@ -42,7 +42,12 @@ st.markdown("""
     .hot-title-1d {font-size: 9px; color: #2e7d32; line-height: 1.1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
     .hot-val-1d {font-size: 18px; color: #1b5e20; font-weight: 900; line-height: 1.2;}
     
-    .stTextArea textarea {font-size: 14px; font-family: monospace; color: #000;}
+    .stTextArea textarea {
+        font-size: 14px; 
+        font-family: monospace; 
+        color: #000000 !important;
+        background-color: #ffffff !important;
+    }
     
     /* Giảm khoảng cách giữa các cột */
     div[data-testid="column"] {
@@ -513,10 +518,10 @@ def main():
             c_vip, c_1d = st.columns(2)
             with c_vip:
                 st.markdown("🔥 **VIP (2+ Ngày):**")
-                st.text_area("Copy VIP:", value=make_text(collected_predictions, mode), height=100)
+                st.code(make_text(collected_predictions, mode), language='text')
             with c_1d:
                 st.markdown("✅ **1 Ngày:**")
-                st.text_area("Copy 1 Day:", value=make_text(oneday_predictions, mode), height=100)
+                st.code(make_text(oneday_predictions, mode), language='text')
 
 if __name__ == "__main__":
     main()
