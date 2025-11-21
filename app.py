@@ -615,7 +615,7 @@ def main():
                             
                             # Đếm tần suất
                             bo_counter = Counter(bo_sets)
-                            freq_display = ", ".join([f"{bo}({count})" for bo, count in bo_counter.most_common()])
+                            freq_display = ", ".join([bo for bo, count in bo_counter.most_common()])
                             
                             vip_table_data.append({
                                 "Giải": pname,
@@ -633,7 +633,7 @@ def main():
                             
                             # Đếm tần suất
                             pair_counter = Counter(pairs)
-                            freq_display = ", ".join([f"{num}({count})" for num, count in pair_counter.most_common()])
+                            freq_display = ", ".join([num for num, count in pair_counter.most_common()])
                             
                             vip_table_data.append({
                                 "Giải": pname,
@@ -675,7 +675,7 @@ def main():
                             
                             # Đếm tần suất
                             bo_counter = Counter(bo_sets)
-                            freq_display = ", ".join([f"{bo}({count})" for bo, count in bo_counter.most_common()])
+                            freq_display = ", ".join([bo for bo, count in bo_counter.most_common()])
                             
                             oneday_table_data.append({
                                 "Giải": pname,
@@ -693,7 +693,7 @@ def main():
                             
                             # Đếm tần suất
                             pair_counter = Counter(pairs)
-                            freq_display = ", ".join([f"{num}({count})" for num, count in pair_counter.most_common()])
+                            freq_display = ", ".join([num for num, count in pair_counter.most_common()])
                             
                             oneday_table_data.append({
                                 "Giải": pname,
