@@ -531,6 +531,10 @@ def main():
 
         elif "Cầu Giải" in method:
             pmap = get_prize_map_no_gdb()
+            
+            # Thu thập tất cả digits từ VIP và 1 Day
+            all_prize_digits = []
+            
             # VIP
             found_vip = False
             st.write("🔥 Giải VIP:")
@@ -543,7 +547,9 @@ def main():
                 if bridge_type == "cross_day": src_body = data[0]['body']
                 
                 if e <= len(src_body) and '?' not in src_body[s:e]:
-                    st.success(f"{pname} ({p['streak']}n): {src_body[s:e]}")
+                    digits = src_body[s:e]
+                    st.success(f"{pname} ({p['streak']}n): {digits}")
+                    all_prize_digits.append(digits)
                     found_vip = True
             if not found_vip: st.caption("...")
             
@@ -556,7 +562,58 @@ def main():
                 if bridge_type == "cross_day": src_body = data[0]['body']
 
                 if e <= len(src_body) and '?' not in src_body[s:e]:
-                    st.info(f"{pname}: {src_body[s:e]}")
+                    digits = src_body[s:e]
+                    st.info(f"{pname}: {digits}")
+                    all_prize_digits.append(digits)
+            
+            # Nếu mode == "set" và có dữ liệu -> Tạo bộ đào và đếm tần suất
+            if mode == "set" and all_prize_digits:
+                st.markdown("---")
+                st.write("**🎲 BỘ ĐÀO TỰ ĐỘNG (Set Mode):**")
+                
+                from collections import Counter
+                
+                # Tìm tất cả các bộ từ các digits
+                all_sets = []
+                all_numbers = set()
+                
+                for digits in all_prize_digits:
+                    # Tìm tất cả cặp 2 số có thể tạo từ digits này
+                    for i in range(len(digits)):
+                        for j in range(len(digits)):
+                            if i != j:
+                                pair = digits[i] + digits[j]
+                                bo_set = get_set(pair)
+                                if bo_set != "?":
+                                    all_sets.append(bo_set)
+                                    # Thêm tất cả số trong bộ này
+                                    if bo_set in BO_DE_DICT:
+                                        all_numbers.update(BO_DE_DICT[bo_set])
+                
+                # Đếm tần suất
+                set_counter = Counter(all_sets)
+                
+                # Hiển thị tần suất bộ (nhiều -> ít)
+                if set_counter:
+                    st.write("📊 **Tần suất các Bộ (Nhiều → Ít):**")
+                    freq_items = set_counter.most_common()
+                    freq_display = ", ".join([f"{bo}({count})" for bo, count in freq_items])
+                    st.info(freq_display)
+                    
+                    # Hiển thị danh sách bộ và số
+                    sorted_sets = sorted(list(set(all_sets)))
+                    sorted_numbers = sorted(list(all_numbers))
+                    
+                    st.write(f"**Tổng {len(sorted_sets)} Bộ:**")
+                    st.code(", ".join(sorted_sets), language='text')
+                    
+                    st.write(f"**Tổng {len(sorted_numbers)} Số:**")
+                    # Hiển thị số theo dòng 15 số
+                    chunk_size = 15
+                    chunks = [sorted_numbers[i:i+chunk_size] for i in range(0, len(sorted_numbers), chunk_size)]
+                    rows = [", ".join(c) for c in chunks]
+                    st.code(",\n".join(rows), language='text')
+
 
 if __name__ == "__main__":
     main()
