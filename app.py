@@ -442,15 +442,15 @@ def main():
                     display_val = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
                     col_name = "Bộ Đào"
                 else:
-                    # Tìm tất cả cặp 2 số (nhị hợp)
+                    # Tìm tất cả cặp 2 số (nhị hợp) - kể cả kép
                     pairs = set()
                     for i in range(len(val_str)):
                         for j in range(len(val_str)):
-                            if i != j:
-                                pair = val_str[i] + val_str[j]
-                                pairs.add(pair)
+                            pair = val_str[i] + val_str[j]
+                            pairs.add(pair)
                     display_val = ", ".join(sorted(list(pairs))) if pairs else "-"
                     col_name = "Nhị Hợp"
+
                 
                 df_1d_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", col_name: display_val})
             st.dataframe(pd.DataFrame(df_1d_prize), use_container_width=True)
