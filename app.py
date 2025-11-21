@@ -5,9 +5,9 @@ import json
 import re
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH & CSS (FIX LỖI LOÁ MÀU)
+# 1. CẤU HÌNH & CSS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu VIP: Giao Diện Mới", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Soi Cầu VIP: Auto Max Streak", page_icon="🚀", layout="wide")
 
 st.markdown("""
 <style>
@@ -16,32 +16,22 @@ st.markdown("""
     thead tr th:first-child {display:none}
     tbody th {display:none}
     
-    /* Header từng bước - Màu chữ Đen đậm trên nền Xám xanh */
+    /* Header */
     .step-header {
-        background-color: #e3f2fd; 
-        padding: 15px; 
-        border-radius: 8px; 
-        font-weight: bold; 
-        color: #0d47a1 !important; /* Chữ xanh đậm */
-        margin-bottom: 15px; 
-        border-left: 5px solid #1565c0;
-        font-size: 18px;
+        background-color: #e3f2fd; padding: 15px; border-radius: 8px; 
+        font-weight: bold; color: #0d47a1; margin-bottom: 15px; 
+        border-left: 5px solid #1565c0; font-size: 18px;
     }
     
-    /* Box kết quả ốp */
+    /* Kết quả ốp */
     .hot-box {
-        background-color: #fff3e0; 
-        border: 2px solid #ff9800; 
-        border-radius: 8px; 
-        padding: 10px; 
-        text-align: center; 
-        margin-bottom: 10px;
+        background-color: #fff3e0; border: 2px solid #ff9800; 
+        border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
     }
     .hot-title {font-size: 12px; color: #e65100; font-weight: bold;}
     .hot-val {font-size: 28px; color: #d32f2f; font-weight: 900;}
     
-    /* Input area to rõ */
-    .stTextArea textarea {font-size: 16px; font-family: monospace; color: #000000;}
+    .stTextArea textarea {font-size: 16px; font-family: monospace; color: #000;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,11 +94,19 @@ def get_prize_map_no_gdb():
     return m
 
 # -----------------------------------------------------------------------------
-# 3. THUẬT TOÁN TÌM CẦU (CÓ THAM SỐ MIN STREAK)
+# 3. THUẬT TOÁN TỰ ĐỘNG QUÉT MAX STREAK
 # -----------------------------------------------------------------------------
-def scan_positions_logic(data, mode, allow_rev, min_s):
+def scan_positions_auto(data, mode, allow_rev):
+    """
+    Tự động tìm cầu chạy dài nhất.
+    1. Tìm cặp ăn ở ngày 0.
+    2. Lùi về quá khứ đếm max streak.
+    3. Sắp xếp giảm dần.
+    """
     if not data: return []
     day0 = data[0]; body = day0['body']; cand = []; start_idx = 5 
+    
+    # 1. Lọc ứng viên ngày 0
     for i in range(start_idx, len(body)):
         for j in range(start_idx, len(body)):
             if i == j: continue
@@ -120,9 +118,11 @@ def scan_positions_logic(data, mode, allow_rev, min_s):
             else:
                 if get_set(val) == day0['de_set']: match = True
             if match: cand.append((i, j))
-    res = []
+    
+    # 2. Đếm Streak
+    results = []
     for (i, j) in cand:
-        strk = 0
+        streak = 0
         for day in data:
             val = day['body'][i] + day['body'][j]
             match = False
@@ -131,16 +131,22 @@ def scan_positions_logic(data, mode, allow_rev, min_s):
                 elif allow_rev and val == day['de_rev']: match = True
             else:
                 if get_set(val) == day['de_set']: match = True
-            if match: strk += 1
-            else: break
-        if strk >= min_s: res.append({"i": i, "j": j, "streak": strk})
-    res.sort(key=lambda x: x['streak'], reverse=True)
-    return res
+            
+            if match: streak += 1
+            else: break # Gãy cầu
+        
+        # Chỉ lấy cầu chạy >= 2 ngày (dưới 2 ngày là ăn may)
+        if streak >= 2: 
+            results.append({"i": i, "j": j, "streak": streak})
+            
+    # 3. Sắp xếp: Cầu dài nhất lên đầu
+    results.sort(key=lambda x: x['streak'], reverse=True)
+    return results
 
-def scan_prizes_logic(data, mode, min_s):
+def scan_prizes_auto(data, mode):
     pmap = get_prize_map_no_gdb(); res = []
     for p, (s, e) in pmap.items():
-        strk = 0
+        streak = 0
         for d in data:
             digits = set(d['body'][s:e])
             match = False
@@ -148,14 +154,14 @@ def scan_prizes_logic(data, mode, min_s):
             else:
                 for n in BO_DE_DICT.get(get_set(d['de']), []):
                     if n[0] in digits and n[1] in digits: match = True; break
-            if match: strk += 1
+            if match: streak += 1
             else: break
-        if strk >= min_s: res.append({"prize": p, "streak": strk, "val": data[0]['body'][s:e]})
+        if streak >= 2: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e]})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
 # -----------------------------------------------------------------------------
-# 4. XỬ LÝ TEXT
+# 4. XỬ LÝ TEXT THÔNG MINH
 # -----------------------------------------------------------------------------
 def parse_smart_text(text, has_gdb_checkbox):
     text = text.lower()
@@ -209,16 +215,16 @@ def parse_smart_text(text, has_gdb_checkbox):
 # 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🎯 Soi Cầu VIP: Quy trình chuẩn")
+    st.title("🚀 Soi Cầu VIP: Tự Động Quét Max Streak")
 
-    # --- MENU TRÊN CÙNG (DASHBOARD) ---
+    # --- MENU ---
     with st.container():
         c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
         with c1:
             method = st.selectbox("💎 PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
         with c2:
-            # User chọn min streak mong muốn
-            pref_streak = st.number_input("Ngày thông (Min)", 2, 10, 3)
+            # Đã xóa ô nhập ngày, thay bằng thông báo auto
+            st.info("⚡ Tự động quét cầu dài nhất")
         with c3:
             is_set = st.checkbox("Soi Bộ Đề", False)
             mode = "set" if is_set else "straight"
@@ -233,59 +239,47 @@ def main():
     data = process_data(raw)
     if not data: st.error("Lỗi API"); return
     
-    # --- AUTO RUN & FALLBACK LOGIC ---
-    # Logic: Quét theo pref_streak. Nếu không có -> hạ xuống 2 -> hạ xuống 1.
-    
+    # --- AUTO SCAN LOGIC ---
     final_bridges = []
     final_prizes = []
-    actual_min_streak = pref_streak
 
     if "Vị Trí" in method:
-        res = scan_positions_logic(data, mode, allow_rev, pref_streak)
-        if not res and pref_streak > 1:
-            res = scan_positions_logic(data, mode, allow_rev, 1) # Fallback về 1
-            actual_min_streak = 1
-        final_bridges = res[:100]
+        res = scan_positions_auto(data, mode, allow_rev)
+        final_bridges = res[:100] # Lấy Top 100 cầu dài nhất
     
     elif "Cầu Giải" in method:
-        res = scan_prizes_logic(data, mode, pref_streak)
-        if not res and pref_streak > 1:
-            res = scan_prizes_logic(data, mode, 1)
-            actual_min_streak = 1
+        res = scan_prizes_auto(data, mode)
         final_prizes = res
 
     # --- BƯỚC 1: HIỂN THỊ KẾT QUẢ QUÉT ---
-    st.markdown("<div class='step-header'>BƯỚC 1: PHÂN TÍCH LỊCH SỬ (API)</div>", unsafe_allow_html=True)
-    
-    # Thông báo Fallback nếu có
-    if actual_min_streak < pref_streak:
-        st.warning(f"⚠️ Không tìm thấy cầu thông {pref_streak} ngày. Hệ thống tự động hiển thị cầu thông {actual_min_streak} ngày.")
+    st.markdown("<div class='step-header'>BƯỚC 1: KẾT QUẢ QUÉT LỊCH SỬ (AUTO SORT)</div>", unsafe_allow_html=True)
     
     if final_bridges:
-        st.success(f"✅ Đã tìm thấy {len(final_bridges)} Cầu Vị Trí đang chạy.")
+        top_streak = final_bridges[0]['streak']
+        st.success(f"✅ Đã tìm thấy {len(final_bridges)} Cầu. Dài nhất: **{top_streak} ngày**.")
     elif final_prizes:
-        st.success(f"✅ Đã tìm thấy {len(final_prizes)} Giải đang ăn thông.")
+        top_streak = final_prizes[0]['streak']
+        st.success(f"✅ Đã tìm thấy {len(final_prizes)} Giải. Dài nhất: **{top_streak} ngày**.")
     else:
-        st.error("Không tìm thấy cầu nào (Kể cả 1 ngày).")
+        st.error("Không tìm thấy cầu nào chạy thông trên 2 ngày.")
 
-    # --- BƯỚC 2: DÁN DỮ LIỆU LIVE ---
-    st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE (Minh Ngọc/Đại Phát)</div>", unsafe_allow_html=True)
+    # --- BƯỚC 2: DÁN LIVE ---
+    st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE</div>", unsafe_allow_html=True)
     
     col_input, col_check = st.columns([2, 1])
     with col_input:
-        raw_text = st.text_area("Dán nội dung vào đây:", height=150, placeholder="Giải nhất 89650...")
+        raw_text = st.text_area("Dán nội dung (Minh Ngọc/Đại Phát):", height=150, placeholder="Giải nhất 89650...")
         has_gdb = st.checkbox("Văn bản CÓ chứa Giải Đặc Biệt?", value=True)
         
-    # --- BƯỚC 3: KẾT QUẢ ỐP ---
+    # --- BƯỚC 3: ỐP CẦU ---
     if raw_text:
         st.markdown("<div class='step-header'>BƯỚC 3: KẾT QUẢ ỐP CẦU (REAL-TIME)</div>", unsafe_allow_html=True)
         
         live_str_107, preview_info = parse_smart_text(raw_text, has_gdb)
         pos_map = get_pos_map()
         
-        # Hiển thị tiến độ
         filled = 107 - live_str_107.count('?')
-        st.progress(filled/107, f"Tiến độ quay: {filled}/107 số")
+        st.progress(filled/107, f"Tiến độ: {filled}/107 số")
 
         # 1. VỊ TRÍ
         if "Vị Trí" in method and final_bridges:
