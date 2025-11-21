@@ -7,7 +7,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CẤU HÌNH & CSS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu VIP: Auto Max Streak", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Soi Cầu VIP: Chốt Số Copy", page_icon="📋", layout="wide")
 
 st.markdown("""
 <style>
@@ -16,22 +16,23 @@ st.markdown("""
     thead tr th:first-child {display:none}
     tbody th {display:none}
     
-    /* Header */
     .step-header {
         background-color: #e3f2fd; padding: 15px; border-radius: 8px; 
         font-weight: bold; color: #0d47a1; margin-bottom: 15px; 
         border-left: 5px solid #1565c0; font-size: 18px;
     }
     
-    /* Kết quả ốp */
     .hot-box {
         background-color: #fff3e0; border: 2px solid #ff9800; 
         border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
     }
-    .hot-title {font-size: 12px; color: #e65100; font-weight: bold;}
-    .hot-val {font-size: 28px; color: #d32f2f; font-weight: 900;}
+    .hot-title {font-size: 11px; color: #e65100; font-weight: bold;}
+    .hot-val {font-size: 24px; color: #d32f2f; font-weight: 900;}
     
-    .stTextArea textarea {font-size: 16px; font-family: monospace; color: #000;}
+    .copy-area textarea {
+        font-size: 18px !important; font-weight: bold; color: #2e7d32;
+        background-color: #f1f8e9;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -94,19 +95,11 @@ def get_prize_map_no_gdb():
     return m
 
 # -----------------------------------------------------------------------------
-# 3. THUẬT TOÁN TỰ ĐỘNG QUÉT MAX STREAK
+# 3. THUẬT TOÁN
 # -----------------------------------------------------------------------------
 def scan_positions_auto(data, mode, allow_rev):
-    """
-    Tự động tìm cầu chạy dài nhất.
-    1. Tìm cặp ăn ở ngày 0.
-    2. Lùi về quá khứ đếm max streak.
-    3. Sắp xếp giảm dần.
-    """
     if not data: return []
     day0 = data[0]; body = day0['body']; cand = []; start_idx = 5 
-    
-    # 1. Lọc ứng viên ngày 0
     for i in range(start_idx, len(body)):
         for j in range(start_idx, len(body)):
             if i == j: continue
@@ -119,7 +112,6 @@ def scan_positions_auto(data, mode, allow_rev):
                 if get_set(val) == day0['de_set']: match = True
             if match: cand.append((i, j))
     
-    # 2. Đếm Streak
     results = []
     for (i, j) in cand:
         streak = 0
@@ -131,15 +123,9 @@ def scan_positions_auto(data, mode, allow_rev):
                 elif allow_rev and val == day['de_rev']: match = True
             else:
                 if get_set(val) == day['de_set']: match = True
-            
             if match: streak += 1
-            else: break # Gãy cầu
-        
-        # Chỉ lấy cầu chạy >= 2 ngày (dưới 2 ngày là ăn may)
-        if streak >= 2: 
-            results.append({"i": i, "j": j, "streak": streak})
-            
-    # 3. Sắp xếp: Cầu dài nhất lên đầu
+            else: break 
+        if streak >= 2: results.append({"i": i, "j": j, "streak": streak})
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
@@ -161,7 +147,7 @@ def scan_prizes_auto(data, mode):
     return res
 
 # -----------------------------------------------------------------------------
-# 4. XỬ LÝ TEXT THÔNG MINH
+# 4. SMART PARSER
 # -----------------------------------------------------------------------------
 def parse_smart_text(text, has_gdb_checkbox):
     text = text.lower()
@@ -179,7 +165,6 @@ def parse_smart_text(text, has_gdb_checkbox):
         elif 'năm' in line_clean or 'g.5' in line_clean or 'g5' in line_clean: current_bucket = '5'
         elif 'sáu' in line_clean or 'g.6' in line_clean or 'g6' in line_clean: current_bucket = '6'
         elif 'bảy' in line_clean or 'g.7' in line_clean or 'g7' in line_clean: current_bucket = '7'
-        
         if current_bucket:
             nums = re.findall(r'\d+', line_clean)
             buckets[current_bucket] += "".join(nums)
@@ -215,7 +200,7 @@ def parse_smart_text(text, has_gdb_checkbox):
 # 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🚀 Soi Cầu VIP: Tự Động Quét Max Streak")
+    st.title("🎯 Soi Cầu VIP: Chốt Số Nhanh")
 
     # --- MENU ---
     with st.container():
@@ -223,8 +208,7 @@ def main():
         with c1:
             method = st.selectbox("💎 PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
         with c2:
-            # Đã xóa ô nhập ngày, thay bằng thông báo auto
-            st.info("⚡ Tự động quét cầu dài nhất")
+            st.info("⚡ Auto Max Streak")
         with c3:
             is_set = st.checkbox("Soi Bộ Đề", False)
             mode = "set" if is_set else "straight"
@@ -238,6 +222,7 @@ def main():
     raw = fetch_history()
     data = process_data(raw)
     if not data: st.error("Lỗi API"); return
+    pos_map = get_pos_map()
     
     # --- AUTO SCAN LOGIC ---
     final_bridges = []
@@ -245,21 +230,29 @@ def main():
 
     if "Vị Trí" in method:
         res = scan_positions_auto(data, mode, allow_rev)
-        final_bridges = res[:100] # Lấy Top 100 cầu dài nhất
-    
+        final_bridges = res[:100] # Top 100
     elif "Cầu Giải" in method:
         res = scan_prizes_auto(data, mode)
         final_prizes = res
 
-    # --- BƯỚC 1: HIỂN THỊ KẾT QUẢ QUÉT ---
-    st.markdown("<div class='step-header'>BƯỚC 1: KẾT QUẢ QUÉT LỊCH SỬ (AUTO SORT)</div>", unsafe_allow_html=True)
+    # --- BƯỚC 1: KẾT QUẢ QUÉT ---
+    st.markdown("<div class='step-header'>BƯỚC 1: KẾT QUẢ QUÉT LỊCH SỬ</div>", unsafe_allow_html=True)
     
     if final_bridges:
         top_streak = final_bridges[0]['streak']
-        st.success(f"✅ Đã tìm thấy {len(final_bridges)} Cầu. Dài nhất: **{top_streak} ngày**.")
+        st.success(f"✅ Tìm thấy {len(final_bridges)} Cầu Vị Trí. Dài nhất: **{top_streak} ngày**.")
+        # Show list table small
+        list_data = []
+        for idx, br in enumerate(final_bridges[:10]):
+             val_old = data[0]['body'][br['i']] + data[0]['body'][br['j']]
+             list_data.append({"Hạng": f"#{idx+1}", "Vị trí": f"{pos_map[br['i']]} + {pos_map[br['j']]}", "Thông": f"{br['streak']}n", "Qua về": val_old})
+        st.dataframe(pd.DataFrame(list_data), use_container_width=True)
+
     elif final_prizes:
         top_streak = final_prizes[0]['streak']
-        st.success(f"✅ Đã tìm thấy {len(final_prizes)} Giải. Dài nhất: **{top_streak} ngày**.")
+        st.success(f"✅ Tìm thấy {len(final_prizes)} Giải ăn thông. Dài nhất: **{top_streak} ngày**.")
+        list_data = [{"Hạng": f"#{i+1}", "Giải": p['prize'], "Thông": f"{p['streak']}n"} for i, p in enumerate(final_prizes)]
+        st.dataframe(pd.DataFrame(list_data), use_container_width=True)
     else:
         st.error("Không tìm thấy cầu nào chạy thông trên 2 ngày.")
 
@@ -276,10 +269,11 @@ def main():
         st.markdown("<div class='step-header'>BƯỚC 3: KẾT QUẢ ỐP CẦU (REAL-TIME)</div>", unsafe_allow_html=True)
         
         live_str_107, preview_info = parse_smart_text(raw_text, has_gdb)
-        pos_map = get_pos_map()
-        
         filled = 107 - live_str_107.count('?')
         st.progress(filled/107, f"Tiến độ: {filled}/107 số")
+
+        # TẬP HỢP CÁC SỐ DỰ ĐOÁN ĐỂ TẠO DÀN
+        collected_predictions = set()
 
         # 1. VỊ TRÍ
         if "Vị Trí" in method and final_bridges:
@@ -290,10 +284,12 @@ def main():
                     vi, vj = live_str_107[i], live_str_107[j]
                     if vi != '?' and vj != '?':
                         pred = vi + vj
+                        collected_predictions.add(pred) # Lưu lại số dự đoán
+                        
                         with cols[count%5]:
                             st.markdown(f"""
                             <div class='hot-box'>
-                                <div class='hot-title'>Top {idx+1} (Thông {br['streak']}n)</div>
+                                <div class='hot-title'>Top {idx+1} ({br['streak']}n)</div>
                                 <div style='font-size:10px; color:gray'>{pos_map[i]} + {pos_map[j]}</div>
                                 <div class='hot-val'>{pred}</div>
                             </div>
@@ -305,6 +301,9 @@ def main():
         elif "Cầu Giải" in method and final_prizes:
             pmap = get_prize_map_no_gdb()
             found = False
+            # Với cầu giải, số dự đoán là các cặp số tạo ra từ giải đó
+            # Tuy nhiên để hiển thị "Dàn số" cho cầu giải thì hơi phức tạp vì nó là tổ hợp.
+            # Ở đây ta hiển thị thông báo giải đã về.
             for p in final_prizes:
                 pname = p['prize']
                 s, e = pmap.get(pname)
@@ -314,6 +313,38 @@ def main():
                         st.success(f"✅ Giải **{pname}** (Thông {p['streak']}n) về: **{val}**")
                         found = True
             if not found: st.info("⏳ Các giải trong cầu chưa quay xong...")
+
+        # --- BƯỚC 4: TẠO DÀN SỐ ĐỂ COPY (Chỉ áp dụng cho Cầu Vị Trí) ---
+        if "Vị Trí" in method and collected_predictions:
+            st.markdown("<div class='step-header'>📋 DÀN SỐ ĐỂ COPY</div>", unsafe_allow_html=True)
+            
+            if mode == "straight":
+                # Chế độ thẳng: Liệt kê số trực tiếp
+                final_list = sorted(list(collected_predictions))
+                st.markdown("**Dàn số dự đoán (Thẳng/Đảo):**")
+                st.text_area("Copy tại đây:", value=", ".join(final_list), height=70, key="copy_straight")
+            
+            else: # Chế độ Bộ
+                # Chế độ Bộ: Gom bộ và bung số
+                detected_sets = set()
+                full_expansion = set()
+                
+                for num in collected_predictions:
+                    s = get_set(num)
+                    detected_sets.add(f"Bộ {s}")
+                    # Bung lụa bộ đó ra
+                    if s in BO_DE_DICT:
+                        full_expansion.update(BO_DE_DICT[s])
+                
+                # Hiển thị 2 dòng
+                c_set, c_num = st.columns(2)
+                with c_set:
+                    st.markdown("**1. Các Bộ Đề báo về:**")
+                    st.text_area("Copy Bộ:", value=", ".join(sorted(list(detected_sets))), height=70, key="copy_sets")
+                
+                with c_num:
+                    st.markdown("**2. Dàn số chi tiết (Bung từ Bộ):**")
+                    st.text_area("Copy Dàn Số:", value=", ".join(sorted(list(full_expansion))), height=70, key="copy_nums")
 
 if __name__ == "__main__":
     main()
