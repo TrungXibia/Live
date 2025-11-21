@@ -394,12 +394,38 @@ def main():
         if vip_prizes: 
             st.success(f"🔥 {len(vip_prizes)} Giải VIP")
             # HIỂN THỊ LUÔN BẢNG
-            df_vip_prize = [{"Giải": p['prize'], "Thông": f"{p['streak']}n"} for p in vip_prizes]
+            df_vip_prize = []
+            for p in vip_prizes:
+                # Tìm tất cả bộ có thể tạo từ val của prize này
+                bo_sets = set()
+                val_str = p['val']
+                for i in range(len(val_str)):
+                    for j in range(len(val_str)):
+                        if i != j:
+                            pair = val_str[i] + val_str[j]
+                            bo = get_set(pair)
+                            if bo != "?":
+                                bo_sets.add(bo)
+                bo_display = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
+                df_vip_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", "Bộ Đào": bo_display})
             st.dataframe(pd.DataFrame(df_vip_prize), use_container_width=True)
             
         if oneday_prizes: 
             st.info(f"✅ {len(oneday_prizes)} Giải 1 Ngày")
-            df_1d_prize = [{"Giải": p['prize'], "Thông": f"{p['streak']}n"} for p in oneday_prizes]
+            df_1d_prize = []
+            for p in oneday_prizes:
+                # Tìm tất cả bộ có thể tạo từ val của prize này
+                bo_sets = set()
+                val_str = p['val']
+                for i in range(len(val_str)):
+                    for j in range(len(val_str)):
+                        if i != j:
+                            pair = val_str[i] + val_str[j]
+                            bo = get_set(pair)
+                            if bo != "?":
+                                bo_sets.add(bo)
+                bo_display = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
+                df_1d_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", "Bộ Đào": bo_display})
             st.dataframe(pd.DataFrame(df_1d_prize), use_container_width=True)
 
     # --- BƯỚC 2: DÁN LIVE ---
