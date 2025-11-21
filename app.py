@@ -7,7 +7,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CẤU HÌNH & CSS
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu VIP: Auto + 1 Day", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Soi Cầu Pro: Tách Dàn VIP/1Day", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -22,21 +22,27 @@ st.markdown("""
         border-left: 5px solid #1565c0; font-size: 18px;
     }
     
-    .hot-box {
+    /* Box VIP (2+ ngày) - Màu Cam */
+    .hot-box-vip {
         background-color: #fff3e0; border: 2px solid #ff9800; 
         border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
     }
-    .hot-title {font-size: 11px; color: #e65100; font-weight: bold;}
-    .hot-val {font-size: 24px; color: #d32f2f; font-weight: 900;}
-    
-    /* Box cho cầu 1 ngày (Màu nhạt hơn) */
-    .hot-box-1day {
-        background-color: #f5f5f5; border: 2px solid #9e9e9e; 
-        border-radius: 8px; padding: 5px; text-align: center; margin-bottom: 5px;
-    }
-    .hot-title-1day {font-size: 10px; color: #616161;}
-    .hot-val-1day {font-size: 20px; color: #424242; font-weight: bold;}
+    .hot-title-vip {font-size: 11px; color: #e65100; font-weight: bold;}
+    .hot-val-vip {font-size: 26px; color: #d32f2f; font-weight: 900;}
 
+    /* Box 1 Ngày - Màu Xanh */
+    .hot-box-1d {
+        background-color: #e8f5e9; border: 2px solid #4caf50; 
+        border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
+    }
+    .hot-title-1d {font-size: 11px; color: #2e7d32; font-weight: bold;}
+    .hot-val-1d {font-size: 26px; color: #1b5e20; font-weight: 900;}
+    
+    /* Vùng Copy tách biệt */
+    .copy-section {
+        border: 1px dashed #bdbdbd; padding: 15px; border-radius: 5px; margin-bottom: 15px;
+    }
+    
     .stTextArea textarea {font-size: 16px; font-family: monospace; color: #000;}
 </style>
 """, unsafe_allow_html=True)
@@ -100,7 +106,7 @@ def get_prize_map_no_gdb():
     return m
 
 # -----------------------------------------------------------------------------
-# 3. THUẬT TOÁN (ĐÃ SỬA ĐỂ LẤY CẢ CẦU 1 NGÀY)
+# 3. THUẬT TOÁN
 # -----------------------------------------------------------------------------
 def scan_positions_auto(data, mode, allow_rev):
     if not data: return []
@@ -131,7 +137,6 @@ def scan_positions_auto(data, mode, allow_rev):
             if match: streak += 1
             else: break 
         
-        # UPDATE: Lấy cả cầu 1 ngày
         if streak >= 1: 
             results.append({"i": i, "j": j, "streak": streak})
             
@@ -151,7 +156,6 @@ def scan_prizes_auto(data, mode):
                     if n[0] in digits and n[1] in digits: match = True; break
             if match: streak += 1
             else: break
-        # UPDATE: Lấy cả cầu 1 ngày
         if streak >= 1: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e]})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
@@ -210,23 +214,20 @@ def parse_smart_text(text, has_gdb_checkbox):
 # 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🎯 Soi Cầu VIP: Full Option")
+    st.title("🎯 Soi Cầu VIP: Tách Dàn Copy")
+
+    if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
+    if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
+    if 'pos_map' not in st.session_state: st.session_state['pos_map'] = get_pos_map()
 
     # --- MENU ---
-    with st.container():
-        c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
-        with c1:
-            method = st.selectbox("💎 PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
-        with c2:
-            st.info("⚡ Auto: VIP + Cầu 1 ngày")
-        with c3:
-            is_set = st.checkbox("Soi Bộ Đề", False)
-            mode = "set" if is_set else "straight"
-        with c4:
-            allow_rev = True
-            if not is_set and "Vị Trí" in method:
-                allow_rev = st.checkbox("Đảo AB", True)
-            else: st.write("")
+    c1, c2, c3 = st.columns([2, 1.5, 1.5])
+    with c1: method = st.selectbox("PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
+    with c2: 
+        is_set = st.checkbox("Soi Bộ Đề", False)
+        mode = "set" if is_set else "straight"
+    with c3: 
+        allow_rev = st.checkbox("Đảo AB", True) if not is_set and "Vị Trí" in method else True
 
     # --- LOAD DATA ---
     raw = fetch_history()
@@ -245,7 +246,7 @@ def main():
         res = scan_prizes_auto(data, mode)
         final_prizes = res
 
-    # Tách cầu VIP và cầu 1 ngày
+    # Phân loại VIP và 1 Day
     vip_bridges = [b for b in final_bridges if b['streak'] >= 2]
     oneday_bridges = [b for b in final_bridges if b['streak'] == 1]
     
@@ -258,40 +259,23 @@ def main():
     if "Vị Trí" in method:
         # VIP TABLE
         if vip_bridges:
-            st.success(f"✅ Tìm thấy {len(vip_bridges)} Cầu VIP (2+ ngày). Dài nhất: {vip_bridges[0]['streak']} ngày.")
-            list_data = []
-            for idx, br in enumerate(vip_bridges[:20]): 
-                 val_old = data[0]['body'][br['i']] + data[0]['body'][br['j']]
-                 list_data.append({"Hạng": f"#{idx+1}", "Vị trí": f"{pos_map[br['i']]} + {pos_map[br['j']]}", "Thông": f"{br['streak']}n", "Qua về": val_old})
-            st.dataframe(pd.DataFrame(list_data), use_container_width=True)
-        else:
-            st.warning("Không có cầu VIP (>=2 ngày).")
-            
-        # 1-DAY TABLE (ẨN/HIỆN)
-        with st.expander(f"👁️ Xem thêm: {len(oneday_bridges)} Cầu chạy 1 ngày"):
-            if oneday_bridges:
-                list_1d = []
-                for idx, br in enumerate(oneday_bridges[:50]):
-                    val_old = data[0]['body'][br['i']] + data[0]['body'][br['j']]
-                    list_1d.append({"#": idx+1, "Vị trí": f"{pos_map[br['i']]} + {pos_map[br['j']]}", "Qua về": val_old})
-                st.dataframe(pd.DataFrame(list_1d), use_container_width=True)
-            else:
-                st.write("Không có cầu 1 ngày.")
+            st.success(f"🔥 Cầu VIP (2+ ngày): {len(vip_bridges)} cầu")
+            df_vip = [{"Hạng": i+1, "Vị trí": f"{pos_map[br['i']]} + {pos_map[br['j']]}", "Thông": f"{br['streak']}n", "Hqua": data[0]['body'][br['i']]+data[0]['body'][br['j']]} for i,br in enumerate(vip_bridges[:20])]
+            st.dataframe(pd.DataFrame(df_vip), use_container_width=True)
+        
+        # 1 DAY TABLE
+        if oneday_bridges:
+            with st.expander(f"👁️ Xem {len(oneday_bridges)} Cầu 1 ngày"):
+                df_1d = [{"#": i+1, "Vị trí": f"{pos_map[br['i']]} + {pos_map[br['j']]}", "Hqua": data[0]['body'][br['i']]+data[0]['body'][br['j']]} for i,br in enumerate(oneday_bridges[:50])]
+                st.dataframe(pd.DataFrame(df_1d), use_container_width=True)
 
     elif "Cầu Giải" in method:
-        # VIP TABLE
         if vip_prizes:
-            st.success(f"✅ Tìm thấy {len(vip_prizes)} Giải VIP.")
-            list_data = [{"Hạng": f"#{i+1}", "Giải": p['prize'], "Thông": f"{p['streak']}n"} for i, p in enumerate(vip_prizes)]
-            st.dataframe(pd.DataFrame(list_data), use_container_width=True)
-        else:
-            st.warning("Không có giải VIP.")
-            
-        # 1-DAY TABLE
-        with st.expander(f"👁️ Xem thêm: {len(oneday_prizes)} Giải chạy 1 ngày"):
-            if oneday_prizes:
-                list_1d = [{"Giải": p['prize'], "Thông": "1 ngày"} for p in oneday_prizes]
-                st.dataframe(pd.DataFrame(list_1d), use_container_width=True)
+            st.success(f"🔥 Giải VIP (2+ ngày): {len(vip_prizes)}")
+            st.dataframe(pd.DataFrame([{"Giải": p['prize'], "Thông": f"{p['streak']}n"} for p in vip_prizes]), use_container_width=True)
+        if oneday_prizes:
+            with st.expander(f"👁️ Xem {len(oneday_prizes)} Giải 1 ngày"):
+                st.dataframe(pd.DataFrame([{"Giải": p['prize'], "Thông": "1 ngày"} for p in oneday_prizes]), use_container_width=True)
 
     # --- BƯỚC 2: DÁN LIVE ---
     st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE</div>", unsafe_allow_html=True)
@@ -308,13 +292,13 @@ def main():
         filled = 107 - live_str_107.count('?')
         st.progress(filled/107, f"Tiến độ: {filled}/107 số")
 
-        collected_predictions = set()
+        vip_preds = set()
+        oneday_preds = set()
 
-        # 1. VỊ TRÍ
         if "Vị Trí" in method:
-            # --- KHU VỰC CẦU VIP ---
+            # --- HIỂN THỊ CẦU VIP ---
             if vip_bridges:
-                st.subheader("🔥 Cầu VIP (2+ ngày)")
+                st.subheader("🔥 CẦU VIP (Đang nổ)")
                 cols = st.columns(5); count = 0
                 for idx, br in enumerate(vip_bridges):
                     i, j = br['i'], br['j']
@@ -322,66 +306,75 @@ def main():
                         vi, vj = live_str_107[i], live_str_107[j]
                         if vi != '?' and vj != '?':
                             pred = vi + vj
-                            collected_predictions.add(pred)
+                            vip_preds.add(pred) # Lưu vào VIP
                             with cols[count%5]:
-                                st.markdown(f"""<div class='hot-box'><div class='hot-title'>#{idx+1} (Thông {br['streak']}n)</div><div style='font-size:10px;color:gray'>{pos_map[i]}+{pos_map[j]}</div><div class='hot-val'>{pred}</div></div>""", unsafe_allow_html=True)
+                                st.markdown(f"""<div class='hot-box-vip'><div class='hot-title-vip'>VIP #{idx+1} ({br['streak']}n)</div><div style='font-size:10px;color:gray'>{pos_map[i]}+{pos_map[j]}</div><div class='hot-val-vip'>{pred}</div></div>""", unsafe_allow_html=True)
                             count += 1
-                if count == 0: st.info("⏳ Cầu VIP chưa nổ số...")
-            
-            # --- KHU VỰC CẦU 1 NGÀY (ẨN) ---
+                if count == 0: st.info("Chưa có cầu VIP nổ.")
+
+            # --- HIỂN THỊ CẦU 1 NGÀY ---
             if oneday_bridges:
-                with st.expander("⚡ Xem Cầu 1 ngày đang nổ (Rủi ro cao)"):
-                    cols1 = st.columns(6); count1 = 0
-                    for idx, br in enumerate(oneday_bridges):
-                        i, j = br['i'], br['j']
-                        if i < len(live_str_107) and j < len(live_str_107):
-                            vi, vj = live_str_107[i], live_str_107[j]
-                            if vi != '?' and vj != '?':
-                                pred = vi + vj
-                                # Không add vào collected_predictions chính, để riêng
-                                with cols1[count1%6]:
-                                    st.markdown(f"""<div class='hot-box-1day'><div class='hot-title-1day'>1 ngày</div><div class='hot-val-1day'>{pred}</div></div>""", unsafe_allow_html=True)
-                                count1 += 1
-                    if count1 == 0: st.info("Chưa có cầu 1 ngày nào nổ.")
+                st.subheader("✅ CẦU 1 NGÀY (Đang nổ)")
+                cols1 = st.columns(6); count1 = 0
+                for idx, br in enumerate(oneday_bridges):
+                    i, j = br['i'], br['j']
+                    if i < len(live_str_107) and j < len(live_str_107):
+                        vi, vj = live_str_107[i], live_str_107[j]
+                        if vi != '?' and vj != '?':
+                            pred = vi + vj
+                            oneday_preds.add(pred) # Lưu vào 1 Day
+                            with cols1[count1%6]:
+                                st.markdown(f"""<div class='hot-box-1d'><div class='hot-title-1d'>1 ngày</div><div style='font-size:9px;color:gray'>{pos_map[i]}+{pos_map[j]}</div><div class='hot-val-1d'>{pred}</div></div>""", unsafe_allow_html=True)
+                            count1 += 1
+                if count1 == 0: st.info("Chưa có cầu 1 ngày nổ.")
 
-        # 2. GIẢI
+        # --- HIỂN THỊ CẦU GIẢI ---
         elif "Cầu Giải" in method:
-            # VIP
-            if vip_prizes:
-                st.subheader("🔥 Giải VIP (2+ ngày)")
-                pmap = get_prize_map_no_gdb()
-                for p in vip_prizes:
-                    pname = p['prize']; s, e = pmap.get(pname)
-                    if e <= len(live_str_107):
-                        val = live_str_107[s:e]
-                        if '?' not in val: st.success(f"✅ Giải **{pname}** (Thông {p['streak']}n) về: **{val}**")
+            st.write("**🔥 Giải VIP:**")
+            pmap = get_prize_map_no_gdb()
+            for p in vip_prizes:
+                pname = p['prize']; s, e = pmap.get(pname)
+                if e <= len(live_str_107):
+                    val = live_str_107[s:e]
+                    if '?' not in val: st.success(f"✅ VIP: **{pname}** (Thông {p['streak']}n) về: **{val}**")
             
-            # 1 DAY
-            if oneday_prizes:
-                with st.expander("⚡ Giải 1 ngày"):
-                    pmap = get_prize_map_no_gdb()
-                    for p in oneday_prizes:
-                        pname = p['prize']; s, e = pmap.get(pname)
-                        if e <= len(live_str_107):
-                            val = live_str_107[s:e]
-                            if '?' not in val: st.info(f"🔹 Giải **{pname}** (1 ngày) về: **{val}**")
+            st.write("**✅ Giải 1 Ngày:**")
+            for p in oneday_prizes:
+                pname = p['prize']; s, e = pmap.get(pname)
+                if e <= len(live_str_107):
+                    val = live_str_107[s:e]
+                    if '?' not in val: st.info(f"🔹 Giải **{pname}** (1 ngày) về: **{val}**")
 
-        # --- BƯỚC 4: COPY DÀN SỐ (CHỈ LẤY TỪ CẦU VIP) ---
-        if "Vị Trí" in method and collected_predictions:
-            st.markdown("<div class='step-header'>📋 DÀN SỐ VIP ĐỂ COPY</div>", unsafe_allow_html=True)
-            if mode == "straight":
-                final_list = sorted(list(collected_predictions))
-                st.text_area("Copy:", value=", ".join(final_list), height=70)
-            else: 
-                detected_sets = set()
-                full_expansion = set()
-                for num in collected_predictions:
-                    s = get_set(num)
-                    detected_sets.add(f"Bộ {s}")
-                    if s in BO_DE_DICT: full_expansion.update(BO_DE_DICT[s])
-                c_set, c_num = st.columns(2)
-                with c_set: st.text_area("Bộ:", value=", ".join(sorted(list(detected_sets))), height=70)
-                with c_num: st.text_area("Số:", value=", ".join(sorted(list(full_expansion))), height=70)
+        # --- BƯỚC 4: TÁCH BIỆT DÀN SỐ COPY ---
+        if "Vị Trí" in method and (vip_preds or oneday_preds):
+            st.markdown("<div class='step-header'>📋 DÀN SỐ ĐỂ COPY (TÁCH RIÊNG)</div>", unsafe_allow_html=True)
+            
+            # HÀM TẠO TEXT
+            def make_text(pred_set, mode):
+                if not pred_set: return "Chưa có số."
+                if mode == "straight":
+                    return ", ".join(sorted(list(pred_set)))
+                else:
+                    sets = set(); nums = set()
+                    for n in pred_set:
+                        s = get_set(n)
+                        sets.add(f"Bộ {s}")
+                        if s in BO_DE_DICT: nums.update(BO_DE_DICT[s])
+                    return f"BỘ: {', '.join(sorted(list(sets)))}\n\nSỐ: {', '.join(sorted(list(nums)))}"
+
+            col_vip, col_1d = st.columns(2)
+            
+            # CỘT 1: DÀN VIP
+            with col_vip:
+                st.markdown("### 🔥 Dàn VIP (2+ Ngày)")
+                txt_vip = make_text(vip_preds, mode)
+                st.text_area("Copy VIP:", value=txt_vip, height=120)
+            
+            # CỘT 2: DÀN 1 NGÀY
+            with col_1d:
+                st.markdown("### ✅ Dàn 1 Ngày")
+                txt_1d = make_text(oneday_preds, mode)
+                st.text_area("Copy 1 Ngày:", value=txt_1d, height=120)
 
 if __name__ == "__main__":
     main()
