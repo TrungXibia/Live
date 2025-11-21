@@ -5,9 +5,9 @@ import json
 import re
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH & CSS
+# 1. CẤU HÌNH & CSS (FIX LỖI LOÁ MÀU)
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu VIP: API + Paste", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Soi Cầu VIP: Giao Diện Mới", page_icon="🎯", layout="wide")
 
 st.markdown("""
 <style>
@@ -16,24 +16,37 @@ st.markdown("""
     thead tr th:first-child {display:none}
     tbody th {display:none}
     
-    /* Box kết quả */
-    .hot-box {
-        background-color: #e3f2fd; border: 2px solid #1565c0; 
-        border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 10px;
+    /* Header từng bước - Màu chữ Đen đậm trên nền Xám xanh */
+    .step-header {
+        background-color: #e3f2fd; 
+        padding: 15px; 
+        border-radius: 8px; 
+        font-weight: bold; 
+        color: #0d47a1 !important; /* Chữ xanh đậm */
+        margin-bottom: 15px; 
+        border-left: 5px solid #1565c0;
+        font-size: 18px;
     }
-    .hot-title {font-size: 11px; color: #0d47a1; font-weight: bold;}
-    .hot-val {font-size: 26px; color: #d32f2f; font-weight: 900;}
     
-    /* Phân chia khu vực */
-    .section-header {
-        background-color: #f0f2f6; padding: 10px; border-radius: 5px; 
-        font-weight: bold; margin-top: 20px; margin-bottom: 10px; border-left: 5px solid #ff4b4b;
+    /* Box kết quả ốp */
+    .hot-box {
+        background-color: #fff3e0; 
+        border: 2px solid #ff9800; 
+        border-radius: 8px; 
+        padding: 10px; 
+        text-align: center; 
+        margin-bottom: 10px;
     }
+    .hot-title {font-size: 12px; color: #e65100; font-weight: bold;}
+    .hot-val {font-size: 28px; color: #d32f2f; font-weight: 900;}
+    
+    /* Input area to rõ */
+    .stTextArea textarea {font-size: 16px; font-family: monospace; color: #000000;}
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. LOGIC API & LỊCH SỬ (ĐỂ TÌM CẦU)
+# 2. DỮ LIỆU & API
 # -----------------------------------------------------------------------------
 API_URL = "https://www.kqxs88.live/api/front/open/lottery/history/list/game?limitNum=50&gameCode=miba"
 
@@ -70,8 +83,8 @@ def process_data(raw):
     for r in raw:
         f = parse_detail_json(r.get('detail', ''))
         if len(f) != 107: continue
-        de = f[2:5][1:]
-        p.append({"issue": r.get('turnNum'), "de": de, "de_rev": de[::-1], "de_set": get_set(de), "tam_cang": f[2], "body": f})
+        de = f[2:5][1:] 
+        p.append({"issue": r.get('turnNum'), "de": de, "de_rev": de[::-1], "de_set": get_set(de), "body": f})
     return p
 
 def get_pos_map():
@@ -90,8 +103,10 @@ def get_prize_map_no_gdb():
             curr += l
     return m
 
-# --- THUẬT TOÁN TÌM CẦU TỪ LỊCH SỬ ---
-def auto_scan_positions(data, mode, allow_rev):
+# -----------------------------------------------------------------------------
+# 3. THUẬT TOÁN TÌM CẦU (CÓ THAM SỐ MIN STREAK)
+# -----------------------------------------------------------------------------
+def scan_positions_logic(data, mode, allow_rev, min_s):
     if not data: return []
     day0 = data[0]; body = day0['body']; cand = []; start_idx = 5 
     for i in range(start_idx, len(body)):
@@ -118,29 +133,29 @@ def auto_scan_positions(data, mode, allow_rev):
                 if get_set(val) == day['de_set']: match = True
             if match: strk += 1
             else: break
-        if strk >= 2: res.append({"i": i, "j": j, "streak": strk})
+        if strk >= min_s: res.append({"i": i, "j": j, "streak": strk})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
-def auto_scan_prizes(data, mode):
+def scan_prizes_logic(data, mode, min_s):
     pmap = get_prize_map_no_gdb(); res = []
     for p, (s, e) in pmap.items():
         strk = 0
         for d in data:
-            d_set = set(d['body'][s:e])
+            digits = set(d['body'][s:e])
             match = False
-            if mode == "straight": match = (d['de'][0] in d_set and d['de'][1] in d_set)
+            if mode == "straight": match = (d['de'][0] in digits and d['de'][1] in digits)
             else:
                 for n in BO_DE_DICT.get(get_set(d['de']), []):
-                    if n[0] in d_set and n[1] in d_set: match = True; break
+                    if n[0] in digits and n[1] in digits: match = True; break
             if match: strk += 1
             else: break
-        if strk >= 2: res.append({"prize": p, "streak": strk, "val": data[0]['body'][s:e]})
+        if strk >= min_s: res.append({"prize": p, "streak": strk, "val": data[0]['body'][s:e]})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
 # -----------------------------------------------------------------------------
-# 3. LOGIC XỬ LÝ TEXT DÁN VÀO (REAL-TIME)
+# 4. XỬ LÝ TEXT
 # -----------------------------------------------------------------------------
 def parse_smart_text(text, has_gdb_checkbox):
     text = text.lower()
@@ -179,12 +194,9 @@ def parse_smart_text(text, has_gdb_checkbox):
             start = current_pos; end = start + length
             val = "?" * length
             if end <= len(raw_str):
-                val = raw_str[start:end]
-                current_pos += length
+                val = raw_str[start:end]; current_pos += length
             elif start < len(raw_str):
-                partial = raw_str[start:]
-                val = partial.ljust(length, '?')
-                current_pos += len(partial)
+                partial = raw_str[start:]; val = partial.ljust(length, '?'); current_pos += len(partial)
             current_segment += val
             display_segment.append(val)
         full_str += current_segment
@@ -194,121 +206,120 @@ def parse_smart_text(text, has_gdb_checkbox):
     return full_str, preview_list
 
 # -----------------------------------------------------------------------------
-# 4. GIAO DIỆN CHÍNH
+# 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
     st.title("🎯 Soi Cầu VIP: Quy trình chuẩn")
 
-    # Khởi tạo Session
-    if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
-    if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
-    if 'pos_map' not in st.session_state: st.session_state['pos_map'] = get_pos_map()
+    # --- MENU TRÊN CÙNG (DASHBOARD) ---
+    with st.container():
+        c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 1.5])
+        with c1:
+            method = st.selectbox("💎 PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
+        with c2:
+            # User chọn min streak mong muốn
+            pref_streak = st.number_input("Ngày thông (Min)", 2, 10, 3)
+        with c3:
+            is_set = st.checkbox("Soi Bộ Đề", False)
+            mode = "set" if is_set else "straight"
+        with c4:
+            allow_rev = True
+            if not is_set and "Vị Trí" in method:
+                allow_rev = st.checkbox("Đảo AB", True)
+            else: st.write("")
 
-    # --- SIDEBAR: CẤU HÌNH ---
-    with st.sidebar:
-        st.header("⚙️ Cấu Hình")
-        method = st.radio("Phương Pháp", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
-        mode = "set" if st.checkbox("Soi Bộ Đề", False) else "straight"
-        allow_rev = st.checkbox("Đảo AB", True)
-        
-        st.divider()
-        st.info("1. Hệ thống tự quét cầu từ API.\n2. Bạn dán kết quả Live.\n3. Hệ thống tự ốp.")
-
-    # --- PHẦN 1: DỮ LIỆU NỀN (API) ---
-    st.markdown("<div class='section-header'>BƯỚC 1: PHÂN TÍCH LỊCH SỬ (Dữ liệu cũ)</div>", unsafe_allow_html=True)
-    
+    # --- LOAD DATA ---
     raw = fetch_history()
     data = process_data(raw)
+    if not data: st.error("Lỗi API"); return
     
-    # Tự động quét nếu chưa có dữ liệu trong session
-    if data and not st.session_state['saved_bridges'] and not st.session_state['saved_prizes']:
-        with st.spinner("Đang tìm kiếm các cầu chạy thông..."):
-            if "Vị Trí" in method:
-                st.session_state['saved_bridges'] = auto_scan_positions(data, mode, allow_rev)[:50]
-            if "Cầu Giải" in method:
-                st.session_state['saved_prizes'] = auto_scan_prizes(data, mode)
+    # --- AUTO RUN & FALLBACK LOGIC ---
+    # Logic: Quét theo pref_streak. Nếu không có -> hạ xuống 2 -> hạ xuống 1.
     
-    # Hiển thị trạng thái cầu
-    n_bridges = len(st.session_state['saved_bridges'])
-    n_prizes = len(st.session_state['saved_prizes'])
-    
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        if "Vị Trí" in method:
-            st.success(f"✅ Đã tìm thấy {n_bridges} Cầu Vị Trí đang chạy thông (Từ API).")
-        else:
-            st.success(f"✅ Đã tìm thấy {n_prizes} Giải đang ăn thông (Từ API).")
-    with c2:
-        if st.button("🔄 Quét lại API"):
-            st.session_state['saved_bridges'] = []
-            st.session_state['saved_prizes'] = []
-            st.rerun()
+    final_bridges = []
+    final_prizes = []
+    actual_min_streak = pref_streak
 
-    # --- PHẦN 2: DÁN KẾT QUẢ LIVE ---
-    st.markdown("<div class='section-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE (Minh Ngọc/Đại Phát)</div>", unsafe_allow_html=True)
+    if "Vị Trí" in method:
+        res = scan_positions_logic(data, mode, allow_rev, pref_streak)
+        if not res and pref_streak > 1:
+            res = scan_positions_logic(data, mode, allow_rev, 1) # Fallback về 1
+            actual_min_streak = 1
+        final_bridges = res[:100]
+    
+    elif "Cầu Giải" in method:
+        res = scan_prizes_logic(data, mode, pref_streak)
+        if not res and pref_streak > 1:
+            res = scan_prizes_logic(data, mode, 1)
+            actual_min_streak = 1
+        final_prizes = res
+
+    # --- BƯỚC 1: HIỂN THỊ KẾT QUẢ QUÉT ---
+    st.markdown("<div class='step-header'>BƯỚC 1: PHÂN TÍCH LỊCH SỬ (API)</div>", unsafe_allow_html=True)
+    
+    # Thông báo Fallback nếu có
+    if actual_min_streak < pref_streak:
+        st.warning(f"⚠️ Không tìm thấy cầu thông {pref_streak} ngày. Hệ thống tự động hiển thị cầu thông {actual_min_streak} ngày.")
+    
+    if final_bridges:
+        st.success(f"✅ Đã tìm thấy {len(final_bridges)} Cầu Vị Trí đang chạy.")
+    elif final_prizes:
+        st.success(f"✅ Đã tìm thấy {len(final_prizes)} Giải đang ăn thông.")
+    else:
+        st.error("Không tìm thấy cầu nào (Kể cả 1 ngày).")
+
+    # --- BƯỚC 2: DÁN DỮ LIỆU LIVE ---
+    st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE (Minh Ngọc/Đại Phát)</div>", unsafe_allow_html=True)
     
     col_input, col_check = st.columns([2, 1])
     with col_input:
-        raw_text = st.text_area("Dán nội dung vào đây:", height=150, placeholder="Giải nhất 89650\nGiải nhì 21573...")
+        raw_text = st.text_area("Dán nội dung vào đây:", height=150, placeholder="Giải nhất 89650...")
         has_gdb = st.checkbox("Văn bản CÓ chứa Giải Đặc Biệt?", value=True)
-    
-    # --- PHẦN 3: KẾT QUẢ ỐP ---
+        
+    # --- BƯỚC 3: KẾT QUẢ ỐP ---
     if raw_text:
-        st.markdown("<div class='section-header'>BƯỚC 3: KẾT QUẢ ỐP CẦU (REAL-TIME)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='step-header'>BƯỚC 3: KẾT QUẢ ỐP CẦU (REAL-TIME)</div>", unsafe_allow_html=True)
         
-        # 1. Phân tích text dán vào
         live_str_107, preview_info = parse_smart_text(raw_text, has_gdb)
+        pos_map = get_pos_map()
         
-        # Hiển thị tiến độ nhập liệu
-        with col_check:
-            filled = 107 - live_str_107.count('?')
-            st.progress(filled/107, f"Đã có {filled}/107 số")
-            with st.expander("Chi tiết phân tách"):
-                for p in preview_info: st.caption(p)
+        # Hiển thị tiến độ
+        filled = 107 - live_str_107.count('?')
+        st.progress(filled/107, f"Tiến độ quay: {filled}/107 số")
 
-        # 2. Ốp Cầu
-        pos_map = st.session_state['pos_map']
-        
-        if "Vị Trí" in method:
-            bridges = st.session_state['saved_bridges']
-            if bridges:
-                cols = st.columns(5); count = 0
-                for idx, br in enumerate(bridges):
-                    i, j = br['i'], br['j']
-                    # Kiểm tra xem trong chuỗi Live đã có số ở vị trí này chưa
-                    if i < len(live_str_107) and j < len(live_str_107):
-                        vi, vj = live_str_107[i], live_str_107[j]
-                        if vi != '?' and vj != '?':
-                            # CẦU ĐÃ NỔ SỐ!
-                            pred = vi + vj
-                            with cols[count%5]:
-                                st.markdown(f"""
-                                <div class='hot-box'>
-                                    <div class='hot-title'>Top {idx+1} (Thông {br['streak']}n)</div>
-                                    <div style='font-size:10px; color:gray'>{pos_map[i]} + {pos_map[j]}</div>
-                                    <div class='hot-val'>{pred}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            count += 1
-                if count == 0:
-                    st.info("⏳ Các cầu đẹp chưa quay đến số tương ứng. Hãy dán tiếp khi có giải mới...")
-            else:
-                st.warning("Chưa có dữ liệu cầu từ Bước 1.")
+        # 1. VỊ TRÍ
+        if "Vị Trí" in method and final_bridges:
+            cols = st.columns(5); count = 0
+            for idx, br in enumerate(final_bridges):
+                i, j = br['i'], br['j']
+                if i < len(live_str_107) and j < len(live_str_107):
+                    vi, vj = live_str_107[i], live_str_107[j]
+                    if vi != '?' and vj != '?':
+                        pred = vi + vj
+                        with cols[count%5]:
+                            st.markdown(f"""
+                            <div class='hot-box'>
+                                <div class='hot-title'>Top {idx+1} (Thông {br['streak']}n)</div>
+                                <div style='font-size:10px; color:gray'>{pos_map[i]} + {pos_map[j]}</div>
+                                <div class='hot-val'>{pred}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        count += 1
+            if count == 0: st.info("⏳ Các cầu đẹp chưa quay đến số tương ứng...")
 
-        elif "Cầu Giải" in method:
-            prizes = st.session_state['saved_prizes']
+        # 2. GIẢI
+        elif "Cầu Giải" in method and final_prizes:
             pmap = get_prize_map_no_gdb()
-            if prizes:
-                found = False
-                for p in prizes:
-                    pname = p['prize']
-                    s, e = pmap.get(pname)
-                    if e <= len(live_str_107):
-                        val = live_str_107[s:e]
-                        if '?' not in val:
-                            st.success(f"✅ Giải **{pname}** (Thông {p['streak']}n) về: **{val}**")
-                            found = True
-                if not found: st.info("⏳ Các giải trong cầu chưa quay xong...")
+            found = False
+            for p in final_prizes:
+                pname = p['prize']
+                s, e = pmap.get(pname)
+                if e <= len(live_str_107):
+                    val = live_str_107[s:e]
+                    if '?' not in val:
+                        st.success(f"✅ Giải **{pname}** (Thông {p['streak']}n) về: **{val}**")
+                        found = True
+            if not found: st.info("⏳ Các giải trong cầu chưa quay xong...")
 
 if __name__ == "__main__":
     main()
