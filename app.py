@@ -507,13 +507,43 @@ def main():
             
             def make_text(pred_set, mode):
                 if not pred_set: return ""
-                if mode == "straight": return ", ".join(sorted(list(pred_set)))
+                
+                # 1. Sắp xếp
+                sorted_list = sorted(list(pred_set))
+                
+                # 2. Xử lý theo mode
+                if mode == "straight":
+                    # Format: (SL: 10) 01, 02, ...
+                    # Hard wrap: 15 số xuống dòng
+                    count = len(sorted_list)
+                    chunk_size = 15
+                    chunks = [sorted_list[i:i+chunk_size] for i in range(0, count, chunk_size)]
+                    rows = [", ".join(c) for c in chunks]
+                    content = ",\n".join(rows)
+                    return f"(SL: {count}) {content}"
                 else:
-                    sets = set(); nums = set()
+                    # Mode Bộ: Gom theo bộ
+                    sets = set()
+                    nums = set()
                     for n in pred_set:
-                        s = get_set(n); sets.add(f"Bộ {s}")
+                        s = get_set(n)
+                        sets.add(s)
                         if s in BO_DE_DICT: nums.update(BO_DE_DICT[s])
-                    return f"BỘ: {', '.join(sorted(list(sets)))}\n\nSỐ: {', '.join(sorted(list(nums)))}"
+                    
+                    sorted_sets = sorted(list(sets))
+                    sorted_nums = sorted(list(nums))
+                    
+                    # Wrap bộ
+                    set_chunks = [sorted_sets[i:i+15] for i in range(0, len(sorted_sets), 15)]
+                    set_rows = [", ".join(c) for c in set_chunks]
+                    set_str = ",\n".join(set_rows)
+                    
+                    # Wrap số
+                    num_chunks = [sorted_nums[i:i+15] for i in range(0, len(sorted_nums), 15)]
+                    num_rows = [", ".join(c) for c in num_chunks]
+                    num_str = ",\n".join(num_rows)
+                    
+                    return f"BỘ ({len(sorted_sets)}): {set_str}\n\nSỐ ({len(sorted_nums)}): {num_str}"
 
             c_vip, c_1d = st.columns(2)
             with c_vip:
