@@ -82,6 +82,41 @@ def fetch_history(limit=50):
         st.error(f"Lỗi kết nối API: {e}")
         return []
 
+def fetch_minhngoc_live():
+    try:
+        from bs4 import BeautifulSoup
+        url = "https://www.minhngoc.net.vn/xo-so-truc-tiep/mien-bac.html"
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+        soup = BeautifulSoup(r.content, 'html.parser')
+        
+        # Tìm bảng kết quả miền bắc (thường nằm trong div box_kqxs)
+        # Minh Ngọc cấu trúc thay đổi tùy lúc, nhưng thường có class 'giai-db', 'giai-nhat', ...
+        
+        mapping = {
+            'ĐB': 'giai-db', 'G1': 'giai-nhat', 'G2': 'giai-nhi', 'G3': 'giai-ba',
+            'G4': 'giai-tu', 'G5': 'giai-nam', 'G6': 'giai-sau', 'G7': 'giai-bay'
+        }
+        
+        results = []
+        box = soup.find('div', class_='box_kqxs') # Tìm box chung
+        if not box: return ""
+
+        for label, cls in mapping.items():
+            row = box.find(class_=cls)
+            if row:
+                # Lấy tất cả các số trong giải đó
+                nums = [span.get_text(strip=True) for span in row.find_all('div', recursive=True) if span.get_text(strip=True).isdigit()]
+                # Nếu không tìm thấy div con, thử tìm trực tiếp text hoặc span khác
+                if not nums:
+                     nums = [s.get_text(strip=True) for s in row.find_all(string=True) if s.get_text(strip=True).isdigit() and len(s.get_text(strip=True)) > 1]
+                
+                if nums:
+                    results.append(f"{label}: {', '.join(nums)}")
+        
+        return "\n".join(results)
+    except Exception as e:
+        return f"Lỗi cào dữ liệu: {e}"
+
 def parse_detail_json(d_str):
     try: return "".join([g.replace(",", "").strip() for g in json.loads(d_str)])
     except: return ""
@@ -254,6 +289,8 @@ def main():
     if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
     if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
     if 'pos_map' not in st.session_state: st.session_state['pos_map'] = get_pos_map()
+    if 'live_text' not in st.session_state: st.session_state['live_text'] = ""
+    if 'auto_refresh' not in st.session_state: st.session_state['auto_refresh'] = False
 
     # --- MENU ---
     c1, c2, c3 = st.columns([2, 1.5, 1.5])
@@ -326,8 +363,27 @@ def main():
     st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE</div>", unsafe_allow_html=True)
     col_input, col_check = st.columns([2, 1])
     with col_input:
-        raw_text = st.text_area("Dán nội dung (Minh Ngọc/Đại Phát):", height=100, placeholder="Giải nhất 89650...")
+        raw_text = st.text_area("Dán nội dung (Minh Ngọc/Đại Phát):", value=st.session_state['live_text'], height=100, placeholder="Giải nhất 89650...")
         has_gdb = st.checkbox("Có GĐB?", value=True)
+        
+    with col_check:
+        st.write("Tự động lấy KQ:")
+        if st.button("🔄 Cập nhật Live (Minh Ngọc)"):
+            live_data = fetch_minhngoc_live()
+            if live_data:
+                st.session_state['live_text'] = live_data
+                st.rerun()
+            else:
+                st.warning("Chưa lấy được dữ liệu hoặc lỗi.")
+        
+        auto = st.checkbox("Tự động (10s/lần)", value=st.session_state['auto_refresh'])
+        if auto:
+            st.session_state['auto_refresh'] = True
+            import time
+            time.sleep(10)
+            st.rerun()
+        else:
+            st.session_state['auto_refresh'] = False
         
     # --- BƯỚC 3: ỐP CẦU ---
     if raw_text or bridge_type == "cross_day":
