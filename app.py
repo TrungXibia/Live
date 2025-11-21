@@ -82,15 +82,48 @@ def fetch_history(limit=50):
         st.error(f"Lỗi kết nối API: {e}")
         return []
 
-def fetch_minhngoc_live():
+def fetch_daiphat_live():
+    try:
+        from bs4 import BeautifulSoup
+        url = "https://xosodaiphat.com/xsmb-truc-tiep.html"
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+        soup = BeautifulSoup(r.content, 'html.parser')
+        
+        mapping = {
+            'ĐB': 'DB', 'G1': '1', 'G2': '2', 'G3': '3',
+            'G4': '4', 'G5': '5', 'G6': '6', 'G7': '7'
+        }
+        
+        results = []
+        for label, code in mapping.items():
+            nums = []
+            idx = 0
+            while True:
+                # ID pattern: mb_prize_DB_item_0, mb_prize_1_item_0, ...
+                element_id = f"mb_prize_{code}_item_{idx}"
+                span = soup.find('span', id=element_id)
+                if span:
+                    text = span.get_text(strip=True)
+                    if text and text.isdigit():
+                        nums.append(text)
+                    idx += 1
+                else:
+                    break
+            
+            if nums:
+                results.append(f"{label}: {', '.join(nums)}")
+                
+        return "\n".join(results)
+    except Exception as e:
+        return ""
+
+def fetch_live_data():
+    # 1. Thử Minh Ngọc
     try:
         from bs4 import BeautifulSoup
         url = "https://www.minhngoc.net.vn/xo-so-truc-tiep/mien-bac.html"
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
         soup = BeautifulSoup(r.content, 'html.parser')
-        
-        # Tìm bảng kết quả miền bắc (thường nằm trong div box_kqxs)
-        # Minh Ngọc cấu trúc thay đổi tùy lúc, nhưng thường có class 'giai-db', 'giai-nhat', ...
         
         mapping = {
             'ĐB': 'giaidb', 'G1': 'giai1', 'G2': 'giai2', 'G3': 'giai3',
@@ -98,24 +131,22 @@ def fetch_minhngoc_live():
         }
         
         results = []
-        box = soup.find('div', class_='box_kqxs') # Tìm box chung
-        if not box: return ""
+        box = soup.find('div', class_='box_kqxs')
+        if box:
+            for label, cls in mapping.items():
+                row = box.find(class_=cls)
+                if row:
+                    nums = [span.get_text(strip=True) for span in row.find_all('div', recursive=True) if span.get_text(strip=True).isdigit()]
+                    if not nums:
+                         nums = [s.get_text(strip=True) for s in row.find_all(string=True) if s.get_text(strip=True).isdigit() and len(s.get_text(strip=True)) > 1]
+                    if nums:
+                        results.append(f"{label}: {', '.join(nums)}")
+            
+            if results: return "\n".join(results)
+    except: pass
 
-        for label, cls in mapping.items():
-            row = box.find(class_=cls)
-            if row:
-                # Lấy tất cả các số trong giải đó
-                nums = [span.get_text(strip=True) for span in row.find_all('div', recursive=True) if span.get_text(strip=True).isdigit()]
-                # Nếu không tìm thấy div con, thử tìm trực tiếp text hoặc span khác
-                if not nums:
-                     nums = [s.get_text(strip=True) for s in row.find_all(string=True) if s.get_text(strip=True).isdigit() and len(s.get_text(strip=True)) > 1]
-                
-                if nums:
-                    results.append(f"{label}: {', '.join(nums)}")
-        
-        return "\n".join(results)
-    except Exception as e:
-        return f"Lỗi cào dữ liệu: {e}"
+    # 2. Fallback sang Đại Phát
+    return fetch_daiphat_live()
 
 def parse_detail_json(d_str):
     try: return "".join([g.replace(",", "").strip() for g in json.loads(d_str)])
@@ -368,8 +399,8 @@ def main():
         
     with col_check:
         st.write("Tự động lấy KQ:")
-        if st.button("🔄 Cập nhật Live (Minh Ngọc)"):
-            live_data = fetch_minhngoc_live()
+        if st.button("🔄 Cập nhật Live (Auto)"):
+            live_data = fetch_live_data()
             if live_data:
                 st.session_state['live_text'] = live_data
                 st.rerun()
