@@ -7,7 +7,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CẤU HÌNH & CSS (ĐÃ CHỈNH SIÊU NHỎ GỌN)
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu Pro: Compact View", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Siêu Gà Súp pờ Soi", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
