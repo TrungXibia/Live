@@ -249,20 +249,29 @@ def scan_positions_auto(data, mode, allow_rev, bridge_type="same_day", min_strea
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-def scan_prizes_auto(data, mode):
+def scan_prizes_auto(data, mode, bridge_type="same_day"):
     pmap = get_prize_map_no_gdb(); res = []
+    
+    # Nếu cross_day: Cần ít nhất 2 ngày
+    if bridge_type == "cross_day" and len(data) < 2: return []
+    
+    max_k = len(data) - 1 if bridge_type == "cross_day" else len(data)
+
     for p, (s, e) in pmap.items():
         streak = 0
-        for d in data:
-            digits = set(d['body'][s:e])
+        for k in range(max_k):
+            current_res_day = data[k]
+            current_src_day = data[k] if bridge_type == "same_day" else data[k+1]
+            
+            digits = set(current_src_day['body'][s:e])
             match = False
-            if mode == "straight": match = (d['de'][0] in digits and d['de'][1] in digits)
+            if mode == "straight": match = (current_res_day['de'][0] in digits and current_res_day['de'][1] in digits)
             else:
-                for n in BO_DE_DICT.get(get_set(d['de']), []):
+                for n in BO_DE_DICT.get(get_set(current_res_day['de']), []):
                     if n[0] in digits and n[1] in digits: match = True; break
             if match: streak += 1
             else: break
-        if streak >= 1: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e]})
+        if streak >= 1: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e] if bridge_type == "same_day" else data[1]['body'][s:e]})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
@@ -333,10 +342,8 @@ def main():
     with c1: 
         method = st.selectbox("PHƯƠNG PHÁP", ["Cầu Vị Trí (Ghép 2 số)", "Cầu Giải (Nhị Hợp)"])
         
-        bridge_type = "same_day"
-        if "Vị Trí" in method:
-            b_type_label = st.radio("Loại Cầu", ["Cầu Trong Ngày (Live)", "Cầu Ngày Trước (Cross-day)"])
-            bridge_type = "same_day" if "Trong Ngày" in b_type_label else "cross_day"
+        b_type_label = st.radio("Loại Cầu", ["Cầu Trong Ngày (Live)", "Cầu Ngày Trước (Cross-day)"])
+        bridge_type = "same_day" if "Trong Ngày" in b_type_label else "cross_day"
             
     with c2: 
         is_set = st.checkbox("Soi Bộ Đào", False)
@@ -361,7 +368,7 @@ def main():
         res = scan_positions_auto(data, mode, allow_rev, bridge_type, min_streak)
         final_bridges = res
     elif "Cầu Giải" in method:
-        res = scan_prizes_auto(data, mode)
+        res = scan_prizes_auto(data, mode, bridge_type)
         final_prizes = res
 
     vip_bridges = [b for b in final_bridges if b['streak'] >= 2]
@@ -529,8 +536,14 @@ def main():
             st.write("🔥 Giải VIP:")
             for p in vip_prizes:
                 pname = p['prize']; s, e = pmap.get(pname)
-                if e <= len(live_str_107) and '?' not in live_str_107[s:e]:
-                    st.success(f"{pname} ({p['streak']}n): {live_str_107[s:e]}")
+                # Nếu cross_day -> Dự đoán dựa trên ngày mới nhất (data[0])
+                # Nếu same_day -> Dự đoán dựa trên live_str_107 (đang nhập)
+                
+                src_body = live_str_107
+                if bridge_type == "cross_day": src_body = data[0]['body']
+                
+                if e <= len(src_body) and '?' not in src_body[s:e]:
+                    st.success(f"{pname} ({p['streak']}n): {src_body[s:e]}")
                     found_vip = True
             if not found_vip: st.caption("...")
             
@@ -538,8 +551,12 @@ def main():
             st.write("✅ Giải 1 Ngày:")
             for p in oneday_prizes:
                 pname = p['prize']; s, e = pmap.get(pname)
-                if e <= len(live_str_107) and '?' not in live_str_107[s:e]:
-                    st.info(f"{pname}: {live_str_107[s:e]}")
+                
+                src_body = live_str_107
+                if bridge_type == "cross_day": src_body = data[0]['body']
+
+                if e <= len(src_body) and '?' not in src_body[s:e]:
+                    st.info(f"{pname}: {src_body[s:e]}")
 
 if __name__ == "__main__":
     main()
