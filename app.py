@@ -93,8 +93,8 @@ def fetch_minhngoc_live():
         # Minh Ngọc cấu trúc thay đổi tùy lúc, nhưng thường có class 'giai-db', 'giai-nhat', ...
         
         mapping = {
-            'ĐB': 'giai-db', 'G1': 'giai-nhat', 'G2': 'giai-nhi', 'G3': 'giai-ba',
-            'G4': 'giai-tu', 'G5': 'giai-nam', 'G6': 'giai-sau', 'G7': 'giai-bay'
+            'ĐB': 'giaidb', 'G1': 'giai1', 'G2': 'giai2', 'G3': 'giai3',
+            'G4': 'giai4', 'G5': 'giai5', 'G6': 'giai6', 'G7': 'giai7'
         }
         
         results = []
