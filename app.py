@@ -7,7 +7,7 @@ import re
 # -----------------------------------------------------------------------------
 # 1. CẤU HÌNH & CSS (ĐÃ CHỈNH SIÊU NHỎ GỌN)
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="Soi Cầu Pro: Compact View", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Siêu Gà Súp pờ Soi", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>
@@ -249,7 +249,7 @@ def parse_smart_text(text, has_gdb_checkbox):
 # 5. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 def main():
-    st.title("🎯 Soi Cầu VIP: Compact View")
+    st.title("🎯 Siêu Gà Súp pờ soi")
 
     if 'saved_bridges' not in st.session_state: st.session_state['saved_bridges'] = []
     if 'saved_prizes' not in st.session_state: st.session_state['saved_prizes'] = []
@@ -266,7 +266,7 @@ def main():
             bridge_type = "same_day" if "Trong Ngày" in b_type_label else "cross_day"
             
     with c2: 
-        is_set = st.checkbox("Soi Bộ Đề", False)
+        is_set = st.checkbox("Soi Bộ Đào", False)
         mode = "set" if is_set else "straight"
         limit_days = st.slider("Số ngày", 10, 100, 50)
         
