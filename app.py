@@ -270,8 +270,17 @@ def main():
             st.info(f"✅ {len(oneday_bridges)} Cầu 1 Ngày")
 
     elif "Cầu Giải" in method:
-        if vip_prizes: st.success(f"🔥 {len(vip_prizes)} Giải VIP")
-        if oneday_prizes: st.info(f"✅ {len(oneday_prizes)} Giải 1 Ngày")
+        if vip_prizes: 
+            st.success(f"🔥 {len(vip_prizes)} Giải VIP")
+            with st.expander("Xem danh sách Giải VIP"):
+                df_vip_prize = [{"Giải": p['prize'], "Thông": f"{p['streak']}n"} for p in vip_prizes]
+                st.dataframe(pd.DataFrame(df_vip_prize), use_container_width=True)
+                
+        if oneday_prizes: 
+            st.info(f"✅ {len(oneday_prizes)} Giải 1 Ngày")
+            with st.expander("Xem danh sách Giải 1 Ngày"):
+                df_1d_prize = [{"Giải": p['prize'], "Thông": f"{p['streak']}n"} for p in oneday_prizes]
+                st.dataframe(pd.DataFrame(df_1d_prize), use_container_width=True)
 
     # --- BƯỚC 2: DÁN LIVE ---
     st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE</div>", unsafe_allow_html=True)
