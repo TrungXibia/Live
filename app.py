@@ -431,56 +431,96 @@ def main():
             filled = 107 - live_str_107.count('?')
             st.progress(filled/107, f"Tiến độ: {filled}/107 số")
         elif bridge_type == "cross_day":
-             # Nếu là cross_day và không có text, ta dùng data[0] làm nguồn soi
-             # Nhưng thực ra logic cross_day là lấy data[0] để dự đoán ngày mai
-             # Nên ta coi data[0]['body'] là nguồn
              live_str_107 = data[0]['body']
              st.info(f"🔮 Dự đoán cho ngày tiếp theo (Dựa trên KQ ngày {data[0]['issue']})")
 
+        # --- 1. TÍNH TOÁN KẾT QUẢ ---
         collected_predictions = set()
         oneday_predictions = set()
+        vip_matches = [] # Lưu lại để hiển thị box
 
         if "Vị Trí" in method:
-            # --- KHU VỰC VIP (MÀU CAM) ---
-            if vip_bridges:
-                st.write("**🔥 Cầu VIP (2+ ngày):**")
-                cols = st.columns(8) 
-                count = 0
-                for idx, br in enumerate(vip_bridges):
-                    i, j = br['i'], br['j']
-                    
-                    # Logic lấy số
-                    vi, vj = '?', '?'
-                    if i < len(live_str_107) and j < len(live_str_107):
-                        vi, vj = live_str_107[i], live_str_107[j]
-                    
-                    if vi != '?' and vj != '?':
-                        pred = vi + vj
-                        collected_predictions.add(pred)
-                        with cols[count%8]:
-                            st.markdown(f"""<div class='hot-box-vip'><div class='hot-title-vip'>#{idx+1} ({br['streak']}n)</div><div class='hot-val-vip'>{pred}</div></div>""", unsafe_allow_html=True)
-                        count += 1
-                if count == 0: st.caption("Chưa có cầu VIP nổ (hoặc chưa quay đến).")
+            # VIP
+            for idx, br in enumerate(vip_bridges):
+                i, j = br['i'], br['j']
+                vi, vj = '?', '?'
+                if i < len(live_str_107) and j < len(live_str_107):
+                    vi, vj = live_str_107[i], live_str_107[j]
+                
+                if vi != '?' and vj != '?':
+                    pred = vi + vj
+                    collected_predictions.add(pred)
+                    vip_matches.append({"idx": idx+1, "streak": br['streak'], "val": pred})
 
-            # --- KHU VỰC 1 NGÀY (MÀU XANH) ---
-            if oneday_bridges:
-                st.write("**✅ Cầu 1 Ngày (Mới):**")
-                cols1 = st.columns(10) 
-                count1 = 0
-                for idx, br in enumerate(oneday_bridges):
-                    i, j = br['i'], br['j']
+            # 1 DAY
+            for br in oneday_bridges:
+                i, j = br['i'], br['j']
+                vi, vj = '?', '?'
+                if i < len(live_str_107) and j < len(live_str_107):
+                    vi, vj = live_str_107[i], live_str_107[j]
+                
+                if vi != '?' and vj != '?':
+                    pred = vi + vj
+                    oneday_predictions.add(pred)
+
+        # --- 2. HIỂN THỊ COPY (ĐƯA LÊN ĐẦU) ---
+        if "Vị Trí" in method and (collected_predictions or oneday_predictions):
+            st.markdown("<div class='step-header'>📋 COPY DÀN SỐ</div>", unsafe_allow_html=True)
+            
+            def make_text(pred_set, mode, simple=False):
+                if not pred_set: return ""
+                sorted_list = sorted(list(pred_set))
+                
+                # Nếu simple=True (cho 1 ngày) hoặc mode straight -> Chỉ hiện số
+                if mode == "straight" or simple:
+                    count = len(sorted_list)
+                    chunk_size = 15
+                    chunks = [sorted_list[i:i+chunk_size] for i in range(0, count, chunk_size)]
+                    rows = [", ".join(c) for c in chunks]
+                    content = ",\n".join(rows)
+                    return f"(SL: {count}) {content}"
+                else:
+                    # Mode Bộ
+                    sets = set()
+                    nums = set()
+                    for n in pred_set:
+                        s = get_set(n)
+                        sets.add(s)
+                        if s in BO_DE_DICT: nums.update(BO_DE_DICT[s])
                     
-                    vi, vj = '?', '?'
-                    if i < len(live_str_107) and j < len(live_str_107):
-                        vi, vj = live_str_107[i], live_str_107[j]
-                        
-                    if vi != '?' and vj != '?':
-                        pred = vi + vj
-                        oneday_predictions.add(pred)
-                        with cols1[count1%10]:
-                            st.markdown(f"""<div class='hot-box-1d'><div class='hot-title-1d'>1day</div><div class='hot-val-1d'>{pred}</div></div>""", unsafe_allow_html=True)
-                        count1 += 1
-                if count1 == 0: st.caption("Chưa có cầu 1 ngày nổ.")
+                    sorted_sets = sorted(list(sets))
+                    sorted_nums = sorted(list(nums))
+                    
+                    set_chunks = [sorted_sets[i:i+15] for i in range(0, len(sorted_sets), 15)]
+                    set_rows = [", ".join(c) for c in set_chunks]
+                    set_str = ",\n".join(set_rows)
+                    
+                    num_chunks = [sorted_nums[i:i+15] for i in range(0, len(sorted_nums), 15)]
+                    num_rows = [", ".join(c) for c in num_chunks]
+                    num_str = ",\n".join(num_rows)
+                    
+                    return f"BỘ ({len(sorted_sets)}): {set_str}\n\nSỐ ({len(sorted_nums)}): {num_str}"
+
+            c_vip, c_1d = st.columns(2)
+            with c_vip:
+                st.markdown("🔥 **VIP (2+ Ngày):**")
+                st.code(make_text(collected_predictions, mode, simple=False), language='text')
+            with c_1d:
+                st.markdown("✅ **1 Ngày (Chỉ số):**")
+                # simple=True để chỉ hiện số, không hiện bộ
+                st.code(make_text(oneday_predictions, mode, simple=True), language='text')
+
+        # --- 3. HIỂN THỊ VISUAL (CHỈ VIP) ---
+        if "Vị Trí" in method:
+            if vip_matches:
+                st.write("**🔥 Chi tiết Cầu VIP:**")
+                cols = st.columns(8) 
+                for k, m in enumerate(vip_matches):
+                    with cols[k%8]:
+                        st.markdown(f"""<div class='hot-box-vip'><div class='hot-title-vip'>#{m['idx']} ({m['streak']}n)</div><div class='hot-val-vip'>{m['val']}</div></div>""", unsafe_allow_html=True)
+                if not vip_matches: st.caption("Chưa có cầu VIP nổ.")
+            
+            # 1 DAY: Đã bỏ visual box theo yêu cầu "k cần màu mè"
 
         elif "Cầu Giải" in method:
             pmap = get_prize_map_no_gdb()
@@ -500,58 +540,6 @@ def main():
                 pname = p['prize']; s, e = pmap.get(pname)
                 if e <= len(live_str_107) and '?' not in live_str_107[s:e]:
                     st.info(f"{pname}: {live_str_107[s:e]}")
-
-        # --- BƯỚC 4: COPY TÁCH BIỆT ---
-        if "Vị Trí" in method and (collected_predictions or oneday_predictions):
-            st.markdown("<div class='step-header'>📋 COPY DÀN SỐ</div>", unsafe_allow_html=True)
-            
-            def make_text(pred_set, mode):
-                if not pred_set: return ""
-                
-                # 1. Sắp xếp
-                sorted_list = sorted(list(pred_set))
-                
-                # 2. Xử lý theo mode
-                if mode == "straight":
-                    # Format: (SL: 10) 01, 02, ...
-                    # Hard wrap: 15 số xuống dòng
-                    count = len(sorted_list)
-                    chunk_size = 15
-                    chunks = [sorted_list[i:i+chunk_size] for i in range(0, count, chunk_size)]
-                    rows = [", ".join(c) for c in chunks]
-                    content = ",\n".join(rows)
-                    return f"(SL: {count}) {content}"
-                else:
-                    # Mode Bộ: Gom theo bộ
-                    sets = set()
-                    nums = set()
-                    for n in pred_set:
-                        s = get_set(n)
-                        sets.add(s)
-                        if s in BO_DE_DICT: nums.update(BO_DE_DICT[s])
-                    
-                    sorted_sets = sorted(list(sets))
-                    sorted_nums = sorted(list(nums))
-                    
-                    # Wrap bộ
-                    set_chunks = [sorted_sets[i:i+15] for i in range(0, len(sorted_sets), 15)]
-                    set_rows = [", ".join(c) for c in set_chunks]
-                    set_str = ",\n".join(set_rows)
-                    
-                    # Wrap số
-                    num_chunks = [sorted_nums[i:i+15] for i in range(0, len(sorted_nums), 15)]
-                    num_rows = [", ".join(c) for c in num_chunks]
-                    num_str = ",\n".join(num_rows)
-                    
-                    return f"BỘ ({len(sorted_sets)}): {set_str}\n\nSỐ ({len(sorted_nums)}): {num_str}"
-
-            c_vip, c_1d = st.columns(2)
-            with c_vip:
-                st.markdown("🔥 **VIP (2+ Ngày):**")
-                st.code(make_text(collected_predictions, mode), language='text')
-            with c_1d:
-                st.markdown("✅ **1 Ngày:**")
-                st.code(make_text(oneday_predictions, mode), language='text')
 
 if __name__ == "__main__":
     main()
