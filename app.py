@@ -396,36 +396,64 @@ def main():
             # HIỂN THỊ LUÔN BẢNG
             df_vip_prize = []
             for p in vip_prizes:
-                # Tìm tất cả bộ có thể tạo từ val của prize này
-                bo_sets = set()
                 val_str = p['val']
-                for i in range(len(val_str)):
-                    for j in range(len(val_str)):
-                        if i != j:
-                            pair = val_str[i] + val_str[j]
-                            bo = get_set(pair)
-                            if bo != "?":
-                                bo_sets.add(bo)
-                bo_display = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
-                df_vip_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", "Bộ Đào": bo_display})
+                
+                if mode == "set":
+                    # Tìm tất cả bộ có thể tạo từ val của prize này
+                    bo_sets = set()
+                    for i in range(len(val_str)):
+                        for j in range(len(val_str)):
+                            if i != j:
+                                pair = val_str[i] + val_str[j]
+                                bo = get_set(pair)
+                                if bo != "?":
+                                    bo_sets.add(bo)
+                    display_val = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
+                    col_name = "Bộ Đào"
+                else:
+                    # Tìm tất cả cặp 2 số (nhị hợp)
+                    pairs = set()
+                    for i in range(len(val_str)):
+                        for j in range(len(val_str)):
+                            if i != j:
+                                pair = val_str[i] + val_str[j]
+                                pairs.add(pair)
+                    display_val = ", ".join(sorted(list(pairs))) if pairs else "-"
+                    col_name = "Nhị Hợp"
+                
+                df_vip_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", col_name: display_val})
             st.dataframe(pd.DataFrame(df_vip_prize), use_container_width=True)
             
         if oneday_prizes: 
             st.info(f"✅ {len(oneday_prizes)} Giải 1 Ngày")
             df_1d_prize = []
             for p in oneday_prizes:
-                # Tìm tất cả bộ có thể tạo từ val của prize này
-                bo_sets = set()
                 val_str = p['val']
-                for i in range(len(val_str)):
-                    for j in range(len(val_str)):
-                        if i != j:
-                            pair = val_str[i] + val_str[j]
-                            bo = get_set(pair)
-                            if bo != "?":
-                                bo_sets.add(bo)
-                bo_display = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
-                df_1d_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", "Bộ Đào": bo_display})
+                
+                if mode == "set":
+                    # Tìm tất cả bộ có thể tạo từ val của prize này
+                    bo_sets = set()
+                    for i in range(len(val_str)):
+                        for j in range(len(val_str)):
+                            if i != j:
+                                pair = val_str[i] + val_str[j]
+                                bo = get_set(pair)
+                                if bo != "?":
+                                    bo_sets.add(bo)
+                    display_val = ", ".join(sorted(list(bo_sets))) if bo_sets else "-"
+                    col_name = "Bộ Đào"
+                else:
+                    # Tìm tất cả cặp 2 số (nhị hợp)
+                    pairs = set()
+                    for i in range(len(val_str)):
+                        for j in range(len(val_str)):
+                            if i != j:
+                                pair = val_str[i] + val_str[j]
+                                pairs.add(pair)
+                    display_val = ", ".join(sorted(list(pairs))) if pairs else "-"
+                    col_name = "Nhị Hợp"
+                
+                df_1d_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", col_name: display_val})
             st.dataframe(pd.DataFrame(df_1d_prize), use_container_width=True)
 
     # --- BƯỚC 2: DÁN LIVE ---
