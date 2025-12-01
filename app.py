@@ -280,6 +280,53 @@ def scan_prizes_auto(data, mode, bridge_type="same_day", min_streak=1):
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
+def backtest_positions(data, mode, allow_rev, bridge_type, candidates):
+    max_k = len(data) - 1 if bridge_type == "cross_day" else len(data)
+    out = []
+    for br in candidates:
+        i, j = br['i'], br['j']
+        hits = 0
+        for k in range(max_k):
+            current_res_day = data[k]
+            current_src_day = data[k] if bridge_type == "same_day" else data[k+1]
+            if i < len(current_src_day['body']) and j < len(current_src_day['body']):
+                val = current_src_day['body'][i] + current_src_day['body'][j]
+                match = False
+                if mode == "straight":
+                    if val == current_res_day['de']: match = True
+                    elif allow_rev and val == current_res_day['de_rev']: match = True
+                else:
+                    if get_set(val) == current_res_day['de_set']: match = True
+                if match: hits += 1
+        out.append({"i": i, "j": j, "hits": hits, "days": max_k})
+    out.sort(key=lambda x: x['hits'], reverse=True)
+    return out
+
+def backtest_prizes(data, mode, bridge_type, entries):
+    pmap = get_prize_map_no_gdb()
+    max_k = len(data) - 1 if bridge_type == "cross_day" else len(data)
+    out = []
+    for p in entries:
+        pname = p['prize']
+        s, e = pmap.get(pname)
+        hits = 0
+        for k in range(max_k):
+            current_res_day = data[k]
+            current_src_day = data[k] if bridge_type == "same_day" else data[k+1]
+            digits = set(current_src_day['body'][s:e])
+            match = False
+            if mode == "straight":
+                match = (current_res_day['de'][0] in digits and current_res_day['de'][1] in digits)
+            else:
+                for n in BO_DE_DICT.get(get_set(current_res_day['de']), []):
+                    if n[0] in digits and n[1] in digits:
+                        match = True
+                        break
+            if match: hits += 1
+        out.append({"prize": pname, "hits": hits, "days": max_k})
+    out.sort(key=lambda x: x['hits'], reverse=True)
+    return out
+
 # -----------------------------------------------------------------------------
 # 4. SMART PARSER
 # -----------------------------------------------------------------------------
@@ -358,6 +405,7 @@ def main():
     with c3: 
         allow_rev = st.checkbox("Đảo AB", True) if not is_set and "Vị Trí" in method else True
         min_streak = st.number_input("Min Streak", 1, 20, 1)
+        enable_backtest = st.checkbox("Backtest theo ngày", False)
 
     # --- LOAD DATA ---
     raw = fetch_history(limit_days)
@@ -459,6 +507,17 @@ def main():
                 
                 df_1d_prize.append({"Giải": p['prize'], "Thông": f"{p['streak']}n", col_name: display_val})
             st.dataframe(pd.DataFrame(df_1d_prize), use_container_width=True)
+
+    if enable_backtest:
+        st.markdown("<div class='step-header'>BACKTEST THEO NGÀY</div>", unsafe_allow_html=True)
+        if "Vị Trí" in method and final_bridges:
+            bt = backtest_positions(data, mode, allow_rev, bridge_type, final_bridges[:30])
+            df_bt = [{"#": i+1, "Vị trí": f"{pos_map[b['i']]} + {pos_map[b['j']]}", "Hits": b['hits'], "Tỷ lệ": f"{b['hits']}/{b['days']}"} for i,b in enumerate(bt)]
+            st.dataframe(pd.DataFrame(df_bt), use_container_width=True)
+        elif "Cầu Giải" in method and final_prizes:
+            bt = backtest_prizes(data, mode, bridge_type, final_prizes[:30])
+            df_bt = [{"#": i+1, "Giải": b['prize'], "Hits": b['hits'], "Tỷ lệ": f"{b['hits']}/{b['days']}"} for i,b in enumerate(bt)]
+            st.dataframe(pd.DataFrame(df_bt), use_container_width=True)
 
     # --- BƯỚC 2: DÁN LIVE ---
     st.markdown("<div class='step-header'>BƯỚC 2: DÁN KẾT QUẢ LIVE</div>", unsafe_allow_html=True)
