@@ -143,7 +143,12 @@ def fetch_live_data():
                 if row:
                     nums = [span.get_text(strip=True) for span in row.find_all('div', recursive=True) if span.get_text(strip=True).isdigit()]
                     if not nums:
-                         nums = [s.get_text(strip=True) for s in row.find_all(string=True) if s.get_text(strip=True).isdigit() and len(s.get_text(strip=True)) > 1]
+                        tmp = []
+                        for s in row.find_all(string=True):
+                            s_text = str(s).strip()
+                            if s_text.isdigit() and len(s_text) > 1:
+                                tmp.append(s_text)
+                        nums = tmp
                     if nums:
                         results.append(f"{label}: {', '.join(nums)}")
             
@@ -243,13 +248,13 @@ def scan_positions_auto(data, mode, allow_rev, bridge_type="same_day", min_strea
             if match: streak += 1
             else: break 
             
-        if streak >= 1: 
+        if streak >= min_streak:
             results.append({"i": i, "j": j, "streak": streak})
             
     results.sort(key=lambda x: x['streak'], reverse=True)
     return results
 
-def scan_prizes_auto(data, mode, bridge_type="same_day"):
+def scan_prizes_auto(data, mode, bridge_type="same_day", min_streak=1):
     pmap = get_prize_map_no_gdb(); res = []
     
     # Nếu cross_day: Cần ít nhất 2 ngày
@@ -271,7 +276,7 @@ def scan_prizes_auto(data, mode, bridge_type="same_day"):
                     if n[0] in digits and n[1] in digits: match = True; break
             if match: streak += 1
             else: break
-        if streak >= 1: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e] if bridge_type == "same_day" else data[1]['body'][s:e]})
+        if streak >= min_streak: res.append({"prize": p, "streak": streak, "val": data[0]['body'][s:e] if bridge_type == "same_day" else data[1]['body'][s:e]})
     res.sort(key=lambda x: x['streak'], reverse=True)
     return res
 
@@ -368,7 +373,7 @@ def main():
         res = scan_positions_auto(data, mode, allow_rev, bridge_type, min_streak)
         final_bridges = res
     elif "Cầu Giải" in method:
-        res = scan_prizes_auto(data, mode, bridge_type)
+        res = scan_prizes_auto(data, mode, bridge_type, min_streak)
         final_prizes = res
 
     vip_bridges = [b for b in final_bridges if b['streak'] >= 2]
